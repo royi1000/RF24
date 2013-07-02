@@ -1,4 +1,4 @@
-this is library to use the nrf24l01 on the raspberry pi.
+this library is python wrapper for the nrf24l01 bc rpi lib
 
 it's based on the arduino lib from J. Coliz <maniacbug@ymail.com>.
 the library was berryfied by Purinda Gunasekara <purinda@gmail.com>.
@@ -13,6 +13,9 @@ cd RF24/librf24-rpi/librf24-bcm/
 then 
 
 make ; make install
+
+swig ...
+gcc ...
 
 examples
 ========

@@ -228,7 +228,7 @@ public:
    * @param _cepin The pin attached to Chip Enable on the RF module
    * @param _cspin The pin attached to Chip Select
    */
-  RF24(uint8_t _cepin, uint8_t _cspin);
+//  RF24(uint8_t _cepin, uint8_t _cspin);
   RF24(uint8_t _cepin, uint8_t _cspin, uint32_t spispeed );
 
   /**
@@ -272,7 +272,7 @@ public:
    * @param len Number of bytes to be sent
    * @return True if the payload was delivered successfully false if not
    */
-  bool write( const void* buf, uint8_t len );
+  bool write( uint8_t* buf, uint8_t len );
 
   /**
    * Test whether there are bytes available to be read
@@ -564,7 +564,7 @@ public:
    * @param len Number of bytes to be sent
    * @return True if the payload was delivered successfully false if not
    */
-  void startWrite( const void* buf, uint8_t len );
+  void startWrite( void* buf, uint8_t len );
 
   /**
    * Write an ack payload for the specified pipe
@@ -580,7 +580,7 @@ public:
    * @param len Length of the data to send, up to 32 bytes max.  Not affected
    * by the static payload set by setPayloadSize().
    */
-  void writeAckPayload(uint8_t pipe, const void* buf, uint8_t len);
+  void writeAckPayload(uint8_t pipe, void* buf, uint8_t len);
 
   /**
    * Determine if an ack payload was received in the most recent call to

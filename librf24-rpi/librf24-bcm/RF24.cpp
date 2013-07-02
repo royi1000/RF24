@@ -541,7 +541,7 @@ void RF24::powerUp(void)
 
 /******************************************************************/
 
-bool RF24::write( const void* buf, uint8_t len )
+bool RF24::write(uint8_t* buf, uint8_t len )
 {
   bool result = false;
 
@@ -613,7 +613,7 @@ bool RF24::write( const void* buf, uint8_t len )
 }
 /****************************************************************************/
 
-void RF24::startWrite( const void* buf, uint8_t len )
+void RF24::startWrite(void* buf, uint8_t len )
 {
   // Transmitter power-up
   write_register(CONFIG, ( read_register(CONFIG) | _BV(PWR_UP) ) & ~_BV(PRIM_RX) );
@@ -825,7 +825,7 @@ void RF24::enableAckPayload(void)
 
 /****************************************************************************/
 
-void RF24::writeAckPayload(uint8_t pipe, const void* buf, uint8_t len)
+void RF24::writeAckPayload(uint8_t pipe, void* buf, uint8_t len)
 {
   const uint8_t* current = reinterpret_cast<const uint8_t*>(buf);
 

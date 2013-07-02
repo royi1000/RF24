@@ -1,4 +1,9 @@
-# Arduino driver for nRF24L01 2.4GHz Wireless Transceiver
+# Python wrapper for Raspberry PI driver for nRF24L01 2.4GHz Wireless Transceiver
+
+cd librf24-rpi/librf24-bcm/
+import rf24
+
+look at ping.py for an example
 
 Design Goals: This library is designed to be...
 
