@@ -4,6 +4,13 @@ from exceptions import *
 
 _DEBUG=True
 
+def enum(**enums):
+    return type('Enum', (), enums)
+
+PACKET_TYPE = enum(stand_alone=0, first_packet=1, continued_packet=2, last_packet=3)
+MAX_PAYLOAD_SIZE = 32
+PAYLOAD_SIZE = 10
+
 class Byte(object):
     def __init__(self, size):
         self.ptr=new_byteArray(size+32)
@@ -27,9 +34,12 @@ class Byte(object):
 
 def millis(): return int(round(time.time() * 1000))%0xffffffff
 
-class RF24_Wrapper:
-    def __init__(self, tx_addr=0xF0F0F0F0E1, rx_addrs=[0xF0F0F0F0D2],
-                 channel=0x4c, level=RF24_PA_HIGH)
+def print_debug(line):
+    if _DEBUG:
+        print line
+    
+class RF24_Wrapper(object):
+    def __init__(self, tx_addr=0xF0F0F0F0E1, rx_addrs=[0xF0F0F0F0D2], channel=0x4c, level=RF24_PA_HIGH):
         self.radio=RF24(RPI_V2_GPIO_P1_15, RPI_V2_GPIO_P1_26, BCM2835_SPI_SPEED_8MHZ)
         self.radio.begin()
         self.debug=_DEBUG
@@ -38,7 +48,7 @@ class RF24_Wrapper:
         self.radio.setPALevel(level)
         self.radio.enableDynamicPayloads()
         self.radio.enableAckPayload()
-        self.setPayloadSize(8)
+        self.setPayloadSize(PAYLOAD_SIZE)
         self.radio.setAutoAck(True)
         self.channel = channel
         self.level = level
@@ -47,6 +57,7 @@ class RF24_Wrapper:
         self._buffer = Byte(32)
         self._pipe_num = Byte(1)
         self.rx_len = len(rx_addrs)
+        self._pipes_bufs = [[0,''], [0,''], [0,''], [0,''], [0,''], [0,''], ]
         if self.rx_len>5:
             raise IndexError('too much rx addresses (max 5)')
         for i in range(self.rx_len):
@@ -57,11 +68,94 @@ class RF24_Wrapper:
         self.startListening()
         
     def read(time=1000):
-        pipes=['','','','','','']
         start=millis()
         while millis()<start+time:
             if self.radio.available(self._pipe_num.ptr):
                 pipe = struct.unpack('B',self._pipe_num.read(1))
                 last_size = self.radio.getDynamicPayloadSize()
-                
+                ok = self.radio.read(self._buffer.ptr, last_size)
+                if not ok:
+                    raise IOError
+                buf = self._buffer.read(last_size)
+                ctrl_byte = ord(buf[0])
+                packet_type = ctrl_byte >> 6
+                payload_len = ctrl_byte & 0b111111
+                if payload_len > MAX_PAYLOAD_SIZE or payload_len > last_size:
+                    raise ValueError('payload size too big: {}'.format(payload_len))
+                buf = buf[:payload_len+1]
+                if packet_type == PACKET_TYPE.stand_alone:
+                    if self._pipes_bufs[pipe][0]:
+                        print "payload stream error on pipe: {}".format(pipe)
+                    self._pipes_bufs[pipe] = [0, '']
+                    print_debug('got stand alone packet, len: {}'.format(payload_len-1))
+                    return (pipe, buf[1:payload_len+1])
+                        
+                elif packet_type == PACKET_TYPE.first_packet:
+                    if self._pipes_bufs[pipe][0]:
+                        print "payload stream error on pipe: {}".format(pipe)
+                    tot_len = struct.unpack('H', buf[1:3])[0]
+                    self._pipes_bufs[pipe] = [tot_len, buf[3:payload_len+1]]
 
+                elif packet_type == PACKET_TYPE.continued_packet:
+                    if not self._pipes_bufs[pipe][0]:
+                        print "payload stream error on pipe: {} got continued packet without start".format(pipe)
+                        self._pipes_bufs[pipe] = [0, '']
+                    else:
+                        self._pipes_bufs[pipe][1] += buf[1:payload_len+1]
+                    
+                elif packet_type == PACKET_TYPE.last_packet:
+                    if not self._pipes_bufs[pipe][0]:
+                        print "payload stream error on pipe: {} got last packet without start".format(pipe)
+                        self._pipes_bufs[pipe] = [0, '']
+                    else:
+                        self._pipes_bufs[pipe][1] += buf[1:payload_len+1]
+                        if len(self._pipes_bufs[pipe][1]) !=  self._pipes_bufs[pipe][0]:
+                            print "invalid size: {} on pipe: {} expected size: {}".format(len(self._pipes_bufs[pipe][1]),
+                                                                                          pipe, self._pipes_bufs[pipe][0])
+                            self._pipes_bufs[pipe] = [0, '']
+                        else:
+                            res = self._pipes_bufs[pipe]
+                            self._pipes_bufs[pipe] = [0, '']
+                            return res                            
+        return None
+
+    def write(self, pipe, tx_buf):
+        buf_len = len(tx_buf)
+        max_payload_size = self.radio.getPayloadSize()
+        if buf_len < max_payload_size:
+            first_packet = PACKET_TYPE.stand_alone << 6
+            first_packet |= buf_len+1
+            self._buffer.write(chr(first_packet)+tx_buf)
+            print_debug('sending single packet: {} len: {}'.format(repr(first_packet+tx_buf),buf_len+1))
+            return self.radio.write(self._buffer.ptr, buf_len+1)
+        first_packet = PACKET_TYPE.first_packet << 6
+        first_packet |= max_payload_size
+        start = struct.pack('BH', first_packet, buf_len)
+        self._buffer.write(start+tx_buf[:max_payload_size-3])
+        print_debug('sending first packet: {} len: {}'.format(repr(start+tx_buf[:max_payload_size-3]),max_payload_size))
+        ret = self.radio.write(self._buffer.ptr, max_payload_size)
+        if not ret:
+            return False
+        remain_buf = tx_buf[max_payload_size-3:]
+        while len(remain_buf) > max_payload_size-1:
+            first_packet = PACKET_TYPE.continued_packet << 6
+            first_packet |= max_payload_size
+            s_buf = chr(first_packet)+tx_buf[:max_payload_size-1]
+            self._buffer.write(s_buf)
+            print_debug('sending continued packet: {} len: {}'.format(repr(s_buf),len(s_buf)))
+            ret = self.radio.write(self._buffer.ptr, len(s_buf))
+            if not ret:
+                return False
+            remain_buf = remain_buf[max_payload_size-1:]
+                
+        first_packet = PACKET_TYPE.last_packet << 6
+        first_packet |= len(remain_buf)
+        s_buf = chr(first_packet)+tx_buf
+        self._buffer.write(s_buf)
+        print_debug('sending last packet: {} len: {}'.format(repr(s_buf),len(s_buf)))
+        ret = self.radio.write(self._buffer.ptr, len(s_buf))
+        if not ret:
+            return False
+        return True
+
+        
