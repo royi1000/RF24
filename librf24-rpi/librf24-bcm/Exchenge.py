@@ -64,7 +64,8 @@ class RFExchange(object):
             self._db['out_devices'] = []
             self._db['app_data'] = {}
             self._db['sensors'] = {}
-     def run(self):
+
+    def run(self):
         try:
             while True:
                 self._rf.read(5000)
