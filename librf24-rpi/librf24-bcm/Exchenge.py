@@ -68,7 +68,7 @@ class RFExchange(object):
     def run(self):
         try:
             while True:
-                self._rf.read(5000)
+                self.handle_data(self._rf.read(5000))
                 changed = []
                 for app in self.apps:
                     if app.should_run():
