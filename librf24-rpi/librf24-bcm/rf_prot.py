@@ -1,6 +1,7 @@
 from rf24 import *
 import struct
 from exceptions import *
+import time
 
 _DEBUG=True
 
@@ -9,7 +10,7 @@ def enum(**enums):
 
 PACKET_TYPE = enum(stand_alone=0, first_packet=1, continued_packet=2, last_packet=3)
 MAX_PAYLOAD_SIZE = 32
-PAYLOAD_SIZE = 10
+PAYLOAD_SIZE = 20
 
 class Byte(object):
     def __init__(self, size):
@@ -39,24 +40,25 @@ def print_debug(line):
         print line
     
 class RF24_Wrapper(object):
-    def __init__(self, tx_addr=0xF0F0F0F0E1, rx_addrs=[0xF0F0F0F0D2], channel=0x4c, level=RF24_PA_HIGH):
+    def __init__(self, tx_addr=0xF0F0F0F0D2, rx_addrs=[0xF0F0F0F0E1], channel=0x4c, level=RF24_PA_HIGH):
         self.radio=RF24(RPI_V2_GPIO_P1_15, RPI_V2_GPIO_P1_26, BCM2835_SPI_SPEED_8MHZ)
         self.radio.begin()
         self.debug=_DEBUG
         self.radio.setRetries(15,15)
-        self.radio.setChannel(channel)
-        self.radio.setPALevel(level)
-        self.radio.enableDynamicPayloads()
-        self.radio.enableAckPayload()
-        self.setPayloadSize(PAYLOAD_SIZE)
+        #self.radio.setChannel(channel)
+        #self.radio.setPALevel(level)
+        #self.radio.enableDynamicPayloads()
+        #self.radio.enableAckPayload()
+        self.radio.setPayloadSize(PAYLOAD_SIZE)
         self.radio.setAutoAck(True)
         self.channel = channel
         self.level = level
         self.tx_addr = tx_addr
-        self.rx_addr = rx_addr
+        self.rx_addrs = rx_addrs
         self._buffer = Byte(32)
         self._pipe_num = Byte(1)
         self.rx_len = len(rx_addrs)
+        self.radio.openWritingPipe(tx_addr)
         self._pipes_bufs = [[0,''], [0,''], [0,''], [0,''], [0,''], [0,''], ]
         if self.rx_len>5:
             raise IndexError('too much rx addresses (max 5)')
@@ -64,15 +66,17 @@ class RF24_Wrapper(object):
             if (0xFFFFFFFF00 & rx_addrs[0]) != (0xFFFFFFFF00 & rx_addrs[i]):
                 raise ValueError('only last adddress byte must be diffrent to all rx address')
             self.radio.openReadingPipe(i+1, rx_addrs[i])
-        print "PRD (noise on channel) {}".format(self.radio.testRPD())
-        self.startListening()
+        #print "PRD (noise on channel) {}".format(self.radio.testRPD())
+        self.radio.startListening()
+        self.radio.printDetails()
         
-    def read(time=1000):
+    def read(self, timeout=1000):
         start=millis()
-        while millis()<start+time:
+        while millis()<start+timeout:
             if self.radio.available(self._pipe_num.ptr):
-                pipe = struct.unpack('B',self._pipe_num.read(1))
-                last_size = self.radio.getDynamicPayloadSize()
+                pipe = struct.unpack('B',self._pipe_num.read(1))[0]
+                print "radio available, pipe:{}".format(pipe)
+                last_size = self.radio.getPayloadSize()
                 ok = self.radio.read(self._buffer.ptr, last_size)
                 if not ok:
                     raise IOError
@@ -117,9 +121,10 @@ class RF24_Wrapper(object):
                             res = self._pipes_bufs[pipe]
                             self._pipes_bufs[pipe] = [0, '']
                             return res                            
-        return None
+        return (None, None)
 
     def write(self, pipe, tx_buf):
+        self.stopListening()
         buf_len = len(tx_buf)
         max_payload_size = self.radio.getPayloadSize()
         if buf_len < max_payload_size:
@@ -127,7 +132,10 @@ class RF24_Wrapper(object):
             first_packet |= buf_len+1
             self._buffer.write(chr(first_packet)+tx_buf)
             print_debug('sending single packet: {} len: {}'.format(repr(first_packet+tx_buf),buf_len+1))
-            return self.radio.write(self._buffer.ptr, buf_len+1)
+            res = self.radio.write(self._buffer.ptr, buf_len+1)
+            self.startListening()
+            return res
+         
         first_packet = PACKET_TYPE.first_packet << 6
         first_packet |= max_payload_size
         start = struct.pack('BH', first_packet, buf_len)
@@ -135,6 +143,7 @@ class RF24_Wrapper(object):
         print_debug('sending first packet: {} len: {}'.format(repr(start+tx_buf[:max_payload_size-3]),max_payload_size))
         ret = self.radio.write(self._buffer.ptr, max_payload_size)
         if not ret:
+            self.startListening()
             return False
         remain_buf = tx_buf[max_payload_size-3:]
         while len(remain_buf) > max_payload_size-1:
@@ -145,6 +154,7 @@ class RF24_Wrapper(object):
             print_debug('sending continued packet: {} len: {}'.format(repr(s_buf),len(s_buf)))
             ret = self.radio.write(self._buffer.ptr, len(s_buf))
             if not ret:
+                self.startListening()
                 return False
             remain_buf = remain_buf[max_payload_size-1:]
                 
@@ -154,6 +164,7 @@ class RF24_Wrapper(object):
         self._buffer.write(s_buf)
         print_debug('sending last packet: {} len: {}'.format(repr(s_buf),len(s_buf)))
         ret = self.radio.write(self._buffer.ptr, len(s_buf))
+        self.startListening()
         if not ret:
             return False
         return True
