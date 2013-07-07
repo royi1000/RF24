@@ -1,7 +1,14 @@
 import rf_prot
 import shelve
 import time
+import struct
 from exceptions import *
+
+def enum(**enums):
+    return type('Enum', (), enums)
+
+COMMAND_TYPE = enum(device_init=0xf0, device_init_response=0xf1, sensor_data=0x10, )
+
 
 def seconds(): return int(round(time.time() * 1000000))
 
@@ -53,8 +60,8 @@ class Sensor(object):
 
 class RFExchange(object):
     def __init__(self, apps):
-        rx_addrs = [0xF0F0F0F01F, 0xF0F0F0F02F, 0xF0F0F0F03F, 0xF0F0F0F04F, 0xF0F0F0F05F]
-        self._rf = rf_prot.RF24_Wrapper(rx_addrs=rx_addrs)
+        #rx_addrs = [0xF0F0F0F01F, 0xF0F0F0F02F, 0xF0F0F0F03F, 0xF0F0F0F04F, 0xF0F0F0F05F]
+        self._rf = rf_prot.RF24_Wrapper()
         self._db = shelve.open('rf_exchange_db')
         self.apps = apps
         if not self._db.has_key('init'):
@@ -65,10 +72,24 @@ class RFExchange(object):
             self._db['app_data'] = {}
             self._db['sensors'] = {}
 
+    def handle_rx_data(self, data):
+        cmd = struct.unpack('B', data[0])[0]
+
+#        if len(data) < 11:
+#            print "invalid buffer recieved", repr(data)
+#            return
+        cmd = struct.unpack('B', data[0])[0]
+        dev_type = struct.unpack('B', data[1])[0]
+        _id = struct.unpack('H', data[2:4])[0]
+        addr = struct.unpack('Q', data[4:12])[0]
+        print "got cmd: {}, dev type: {}, id: {}, addr: {}".format(hex(cmd), hex(dev_type),hex(_id), hex(addr))
+
     def run(self):
         try:
             while True:
-                self.handle_data(self._rf.read(5000))
+                (pipe, data) = self._rf.read(5000)
+                if data:
+                    self.handle_rx_data(data)
                 changed = []
                 for app in self.apps:
                     if app.should_run():
@@ -80,3 +101,6 @@ class RFExchange(object):
                         
         finally:
             self._db.close()
+
+
+RFExchange([]).run()
