@@ -27,7 +27,6 @@ unsigned int current_ptr = 0;
 
 typedef struct store {
     uint16_t magic_code;
-    uint16_t id;
     uint64_t rx_addr;
     uint64_t tx_addr;
 } store_t;
@@ -35,7 +34,6 @@ typedef struct store {
 typedef struct cmd_message {
     uint8_t  command;
     uint8_t dev_type;
-    uint16_t id;
     uint64_t addr;
 } cmd_message_t;
 
@@ -70,7 +68,6 @@ void handle_write(void* buf, unsigned int len){
 void send_init_packet() {
     cmd_message_t message;
     message.command = COMMAND_INIT;
-    message.id = config_settings.id;
     message.type = DEVICE_TYPE;
     message.addr = config_settings.rx_addr;
     radio.stopListening();
@@ -87,9 +84,8 @@ void setup()
         eeprom_read_block((void*)&config_settings, (void*)0, sizeof(config_settings));
         // Setup and configure rf radio
         if (0xDE12 != config_settings.magic_code) {
-           config_settings.rx_addr = 0xF0F0F0F0E2LL;
+           config_settings.rx_addr = random(0xFFFFFFFFFF);
            config_settings.tx_addr = 0xF0F0F0F0D2LL;
-           config_settings.id = random(0xffff);
         }
         radio.begin();
         
@@ -111,7 +107,7 @@ void setup()
 void loop()
 {
         if (!inited) {
-          printf("not initialized, trying to connect host\n");
+            printf("not initialized, trying to connect host\n");
             radio.stopListening();
             send_init_packet();
             radio.startListening();
@@ -134,3 +130,4 @@ void loop()
         }
       delay(1000);      
 }
+

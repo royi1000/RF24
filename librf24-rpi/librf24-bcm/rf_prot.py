@@ -123,8 +123,9 @@ class RF24_Wrapper(object):
                             return res                            
         return (None, None)
 
-    def write(self, pipe, tx_buf):
+    def write(self, tx_addr, tx_buf):
         self.stopListening()
+        self.radio.openWritingPipe(tx_addr)
         buf_len = len(tx_buf)
         max_payload_size = self.radio.getPayloadSize()
         if buf_len < max_payload_size:
