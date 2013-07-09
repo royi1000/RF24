@@ -12,16 +12,16 @@ COMMAND_TYPE = enum(device_init=0xf0, device_init_response=0xf1, sensor_data=0x1
 DEVICE_TYPE = enum(screen=0x10, sensor=0x20)
 DATA_TYPE = enum(date=0x1, string=0x2, bitmap=0x3)
 
-def seconds(): return int(round(time.time() * 1000000))
+def seconds(): return int(round(time.time()))
 
 class App(object):
     APP_NAME = 'undef'
-    def __init__(self, interval=60):
+    def __init__(self, interval=6):
         self.last_time = 0
         self.interval = interval
         self.last_data = ''
 
-    def get_data(self):
+    def get_data(self, _id):
         self.last_time = seconds()
         raise NotImplemented
 
@@ -39,11 +39,28 @@ class DT(App):
     APP_NAME = 'time'
     def valid(self):
         return True
-    def get_data(self):
+    def get_data(self, _id):
         self.last_time = seconds()
-        dt = datetime.now()[:-1]
-        struct.pack('BHBBBBB', DATA_TYPE.date, *dt)
+        dt = datetime.now().timetuple()[0:6]
+        return chr(DATA_TYPE.date) + struct.pack('HBBBBB', *dt)
         
+class ShortTest(App):
+    APP_NAME='shorttest'
+    def valid(self):
+        return True
+    def get_data(self, _id):
+        self.last_time = seconds()
+        return chr(DATA_TYPE.string) + chr(_id) + 'short test'
+    
+class LongTest(App):
+    APP_NAME='longtest'
+    def valid(self):
+        return True
+    def get_data(self,_id):
+        self.last_time = seconds()
+        return  chr(DATA_TYPE.string) + chr(_id) + 'long test' * 4
+
+
 
 class Sensor(object):
     REP_STR = "Sensor data: {}"
@@ -86,16 +103,21 @@ class RFExchange(object):
         if cmd == COMMAND_TYPE.device_init:
             dev_type = struct.unpack('B', data[1])[0]
             addr = struct.unpack('Q', data[2:10])[0]
-            print "got device init cmd: {}, dev type: {}, id: {}, addr: {}".format(hex(cmd), hex(dev_type),hex(_id), hex(addr))
+            print "got device init cmd: {}, dev type: {}, addr: {}".format(hex(cmd), hex(dev_type), hex(addr))
             if dev_type==DEVICE_TYPE.screen:
                 if not addr in self._db['out_devices']:
-                    self._db['out_devices'].append(addr)
-                data[0]=chr(COMMAND_TYPE.device_init_response)
+                    print repr(addr)
+                    x=self._db['out_devices']
+                    x.append(addr)
+                    self._db['out_devices'] = x
+                data=chr(COMMAND_TYPE.device_init_response)+data[1:]
+                time.sleep(0.05)
                 self._rf.write(addr, data[:10])
 
-    def send_data(self, _id, data):
+    def send_data(self, data):
         for addr in self._db['out_devices']:
-            self._rf.write(chr(_id)+addr, data)
+            print "sending data {} to device: {}".format(repr(data), addr)
+            self._rf.write(addr, data)
                     
     def run(self):
         try:
@@ -104,11 +126,12 @@ class RFExchange(object):
                 if data:
                     self.handle_rx_data(data)
                 changed = []
-                for _id, app in enumarate(self.apps):
+                for _id, app in enumerate(self.apps):
                     if app.should_run():
-                        self._db['app_data'][app.APP_NAME] = app.get_data()
+                        data = app.get_data(_id)
+                        print repr(data)
                         if app.valid():
-                            self.send_data(_id, self._db['app_data'][app.APP_NAME])
+                            self.send_data(data)
                         else:
                             self.send_invalid(_id)
                         #changed.append(app.APP_NAME)
@@ -119,4 +142,4 @@ class RFExchange(object):
             self._db.close()
 
 
-RFExchange([]).run()
+RFExchange([DT(),LongTest()]).run()
