@@ -124,50 +124,53 @@ class RF24_Wrapper(object):
         return (None, None)
 
     def write(self, tx_addr, tx_buf):
-        self.stopListening()
+        self.radio.stopListening()
         self.radio.openWritingPipe(tx_addr)
         buf_len = len(tx_buf)
+        print buf_len
         max_payload_size = self.radio.getPayloadSize()
         if buf_len < max_payload_size:
             first_packet = PACKET_TYPE.stand_alone << 6
             first_packet |= buf_len+1
             self._buffer.write(chr(first_packet)+tx_buf)
-            print_debug('sending single packet: {} len: {}'.format(repr(first_packet+tx_buf),buf_len+1))
+            print_debug('sending single packet: {} len: {}'.format(repr(self._buffer.read(buf_len+1)),buf_len+1))
             res = self.radio.write(self._buffer.ptr, buf_len+1)
-            self.startListening()
+            self.radio.startListening()
             return res
          
         first_packet = PACKET_TYPE.first_packet << 6
         first_packet |= max_payload_size
-        start = struct.pack('BH', first_packet, buf_len)
+        start = chr(first_packet) + struct.pack('H', buf_len)
         self._buffer.write(start+tx_buf[:max_payload_size-3])
         print_debug('sending first packet: {} len: {}'.format(repr(start+tx_buf[:max_payload_size-3]),max_payload_size))
         ret = self.radio.write(self._buffer.ptr, max_payload_size)
-        if not ret:
-            self.startListening()
-            return False
+#        if not ret:
+#            self.radio.startListening()
+#            return False
         remain_buf = tx_buf[max_payload_size-3:]
         while len(remain_buf) > max_payload_size-1:
+            time.sleep(0.1)
             first_packet = PACKET_TYPE.continued_packet << 6
             first_packet |= max_payload_size
-            s_buf = chr(first_packet)+tx_buf[:max_payload_size-1]
+            s_buf = chr(first_packet)+remain_buf[:max_payload_size-1]
             self._buffer.write(s_buf)
             print_debug('sending continued packet: {} len: {}'.format(repr(s_buf),len(s_buf)))
             ret = self.radio.write(self._buffer.ptr, len(s_buf))
-            if not ret:
-                self.startListening()
-                return False
+#            if not ret:
+#                self.radio.startListening()
+#                return False
             remain_buf = remain_buf[max_payload_size-1:]
                 
+        time.sleep(0.1)
         first_packet = PACKET_TYPE.last_packet << 6
         first_packet |= len(remain_buf)
-        s_buf = chr(first_packet)+tx_buf
+        s_buf = chr(first_packet)+remain_buf
         self._buffer.write(s_buf)
         print_debug('sending last packet: {} len: {}'.format(repr(s_buf),len(s_buf)))
         ret = self.radio.write(self._buffer.ptr, len(s_buf))
-        self.startListening()
-        if not ret:
-            return False
+        self.radio.startListening()
+#        if not ret:
+#            return False
         return True
 
         
