@@ -12,7 +12,9 @@ def enum(**enums):
 
 COMMAND_TYPE = enum(device_init=0xf0, device_init_response=0xf1, sensor_data=0x10, screen_data=0x11)
 DEVICE_TYPE = enum(screen=0x10, sensor=0x20)
-DATA_TYPE = enum(date=0x1, string=0x2, bitmap=0x3)
+DATA_TYPE = enum(date=0x1, string=0x2, bitmap=0x3, color_string=0x4, remove_id=0x10)
+COLOR_TYPE = enum(c_red=1, c_green=2, c_blue=3,c_purple=4,c_yellow=5,c_aqua=6)
+
 
 def seconds(): return int(round(time.time()))
 
@@ -52,7 +54,7 @@ class ShortTest(App):
         return True
     def get_data(self, _id):
         self.last_time = seconds()
-        return chr(DATA_TYPE.string) + chr(_id) + 'short test'
+        return chr(DATA_TYPE.color_string) + chr(_id) + chr(COLOR_TYPE.c_green) +  'short test'
     
 class LongTest(App):
     APP_NAME='longtest'
@@ -60,22 +62,22 @@ class LongTest(App):
         return True
     def get_data(self,_id):
         self.last_time = seconds()
-        return  chr(DATA_TYPE.string) + chr(_id) + 'long test' * 4
+        return  chr(DATA_TYPE.color_string) + chr(_id) +  chr(COLOR_TYPE.c_yellow) +  'long test' * 4
 
 class Gmail(App):
     APP_NAME='gmail'
     def get_data(self, _id):
         user,passwd = open('gmail.txt').readline().split(',')
-        self.count = get_unread_msgs(user,passwd)
-        if count:
-            return chr(DATA_TYPE.string) + chr(_id) + 'Gmail: unread count {}'.format(count)
+        self.count = self.get_unread_msgs(user,passwd)
+        if self.count:
+            return chr(DATA_TYPE.color_string) + chr(_id) +  chr(COLOR_TYPE.c_purple) +  'Gmail unread{}'.format(self.count)
             self.last_time = seconds()
             return ''
             
     def valid(self):
         return self.count
         
-    def get_unread_msgs(user, passwd):
+    def get_unread_msgs(self, user, passwd):
         auth_handler = urllib2.HTTPBasicAuthHandler()
         auth_handler.add_password(
         realm='New mail feed',
@@ -85,7 +87,7 @@ class Gmail(App):
         opener = urllib2.build_opener(auth_handler)
         urllib2.install_opener(opener)
         feed = urllib2.urlopen('https://mail.google.com/mail/feed/atom')
-        dom=parse(feed.read())
+        dom=parse(feed)
         count_obj = dom.getElementsByTagName("fullcount")[0]
         # get its text and convert it to an integer
         return int(count_obj.firstChild.wholeText)
@@ -142,6 +144,10 @@ class RFExchange(object):
                 time.sleep(0.05)
                 self._rf.write(addr, data[:10])
 
+    def send_invalid(self, _id):
+        data = chr(DATA_TYPE.remove_id) + chr(_id)
+        self.send_data(data)
+
     def send_data(self, data):
         for addr in self._db['out_devices']:
             print "sending data {} to device: {}".format(repr(data), addr)
@@ -170,4 +176,4 @@ class RFExchange(object):
             self._db.close()
 
 
-RFExchange([DT(),LongTest()]).run()
+RFExchange([DT(),LongTest(),ShortTest(),Gmail()]).run()

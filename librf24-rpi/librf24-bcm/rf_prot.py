@@ -163,7 +163,7 @@ class RF24_Wrapper(object):
                 
         time.sleep(0.1)
         first_packet = PACKET_TYPE.last_packet << 6
-        first_packet |= len(remain_buf)
+        first_packet |= len(remain_buf)+1
         s_buf = chr(first_packet)+remain_buf
         self._buffer.write(s_buf)
         print_debug('sending last packet: {} len: {}'.format(repr(s_buf),len(s_buf)))
