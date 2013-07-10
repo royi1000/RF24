@@ -1,11 +1,104 @@
-#include <avr/pgmspace.h> 
 #include <avr/eeprom.h>
 #include <SPI.h>
 #include <EEPROM.h>
 #include <Time.h>
 #include "nRF24L01.h"
 #include "RF24.h"
-#include "printf.h"
+
+#define RED_PIN A0
+#define BLUE_PIN A2
+#define GREEN_PIN A1
+
+/* RGB */
+void color(int red, int green, int blue, int time) {
+  if (red){
+    digitalWrite(RED_PIN, LOW);    // turn the LED off by making the voltage LOW
+    delay(4 * red / 100);
+    digitalWrite(RED_PIN, HIGH);   // turn the LED on (HIGH is the voltage level)    
+  }
+  if (green){
+    digitalWrite(GREEN_PIN, LOW);    // turn the LED off by making the voltage LOW
+    delay(6 *  green/ 100);
+    digitalWrite(GREEN_PIN, HIGH);   // turn the LED on (HIGH is the voltage level)    
+  }
+  if (blue){
+    digitalWrite(BLUE_PIN, LOW);    // turn the LED off by making the voltage LOW
+    delay(6 *  blue /100);
+    digitalWrite(BLUE_PIN, HIGH);   // turn the LED on (HIGH is the voltage level)    
+  }
+  //delay(time);
+}
+
+void fade(int fromred, int fromgreen, int fromblue, 
+                      int tored,  int togreen, int toblue, 
+                      int time) {
+          int redint = 0;
+          int blueint = 0;
+          int greenint = 0;
+          if (!time) return;
+         for(int i=0; i<time;i++){
+                redint = fromred + ((tored - fromred) * i/time);
+                greenint = fromgreen + ((togreen - fromgreen) * i/time);
+                blueint = fromblue + ((toblue - fromblue) * i/time);
+                for(int j=0;j<10;j++){
+                        color(redint, greenint, blueint,1);
+                }
+         }
+}
+
+#define RED color(100,0,0,10)
+#define GREEN color(0,100,0,10)
+#define BLUE color(0,0,100,10)
+#define PURPLE color(100,0,100,10)
+#define AQUA color(0,100,100,10)
+#define YELLOW color(100,100,0,10)
+
+void red(int time){
+  unsigned long  start = millis();
+  while(millis() < start + 1000){
+  RED; 
+  };  
+}
+
+void green(int time){
+  unsigned long  start = millis();
+  while(millis() < start + 1000){
+  GREEN;
+  };  
+}
+
+void blue(int time){
+  unsigned long  start = millis();
+  while(millis() < start + 1000){
+  BLUE; 
+  };  
+}
+
+void purple(int time) {
+  unsigned long  start = millis();
+  while(millis() < start + 1000){
+  PURPLE; 
+  };    
+}
+
+void aqua(int time) {
+  unsigned long  start = millis();
+  while(millis() < start + 1000){
+  AQUA; 
+  };    
+}
+
+void yellow(int time) {
+  unsigned long  start = millis();
+  while(millis() < start + 1000){
+  YELLOW; 
+  };    
+}
+
+
+
+/**************************/
+
 
 /*
 This Code has extra features 
@@ -35,7 +128,7 @@ http://playground.arduino.cc/Code/PCD8544
 
 int a = 0;
 
-static const byte ASCII[][5] PROGMEM =
+static const byte ASCII[][5] =
 {
  {0x00, 0x00, 0x00, 0x00, 0x00} // 20  
 ,{0x00, 0x00, 0x5f, 0x00, 0x00} // 21 !
@@ -133,133 +226,6 @@ static const byte ASCII[][5] PROGMEM =
 ,{0x00, 0x41, 0x36, 0x08, 0x00} // 7d }
 ,{0x10, 0x08, 0x08, 0x10, 0x08} // 7e ←
 ,{0x00, 0x06, 0x09, 0x09, 0x06} // 7f →
-	,{0x1E, 0xA1, 0xA1, 0x61, 0x12}
-	,{0x3A, 0x40, 0x40, 0x20, 0x7A}
-	,{0x38, 0x54, 0x54, 0x55, 0x59}
-	,{0x21, 0x55, 0x55, 0x79, 0x41}
-	,{0x21, 0x54, 0x54, 0x78, 0x41}
-	,{0x21, 0x55, 0x54, 0x78, 0x40}
-	,{0x20, 0x54, 0x55, 0x79, 0x40}
-	,{0x0C, 0x1E, 0x52, 0x72, 0x12}
-	,{0x39, 0x55, 0x55, 0x55, 0x59}
-	,{0x39, 0x54, 0x54, 0x54, 0x59}
-	,{0x39, 0x55, 0x54, 0x54, 0x58}
-	,{0x00, 0x00, 0x45, 0x7C, 0x41}
-	,{0x00, 0x02, 0x45, 0x7D, 0x42}
-	,{0x00, 0x01, 0x45, 0x7C, 0x40}
-	,{0xF0, 0x29, 0x24, 0x29, 0xF0}
-	,{0xF0, 0x28, 0x25, 0x28, 0xF0}
-	,{0x7C, 0x54, 0x55, 0x45, 0x00}
-	,{0x20, 0x54, 0x54, 0x7C, 0x54}
-	,{0x7C, 0x0A, 0x09, 0x7F, 0x49}
-	,{0x32, 0x49, 0x49, 0x49, 0x32}
-	,{0x32, 0x48, 0x48, 0x48, 0x32}
-	,{0x32, 0x4A, 0x48, 0x48, 0x30}
-	,{0x3A, 0x41, 0x41, 0x21, 0x7A}
-	,{0x3A, 0x42, 0x40, 0x20, 0x78}
-	,{0x00, 0x9D, 0xA0, 0xA0, 0x7D}
-	,{0x39, 0x44, 0x44, 0x44, 0x39}
-	,{0x3D, 0x40, 0x40, 0x40, 0x3D}
-	,{0x3C, 0x24, 0xFF, 0x24, 0x24}
-	,{0x48, 0x7E, 0x49, 0x43, 0x66}
-	,{0x2B, 0x2F, 0xFC, 0x2F, 0x2B}
-	,{0xFF, 0x09, 0x29, 0xF6, 0x20}
-	,{0xC0, 0x88, 0x7E, 0x09, 0x03}
-	,{0x20, 0x54, 0x54, 0x79, 0x41}
-	,{0x00, 0x00, 0x44, 0x7D, 0x41}
-	,{0x30, 0x48, 0x48, 0x4A, 0x32}
-	,{0x38, 0x40, 0x40, 0x22, 0x7A}
-	,{0x00, 0x7A, 0x0A, 0x0A, 0x72}
-	,{0x7D, 0x0D, 0x19, 0x31, 0x7D}
-	,{0x26, 0x29, 0x29, 0x2F, 0x28}
-	,{0x26, 0x29, 0x29, 0x29, 0x26}
-	,{0x30, 0x48, 0x4D, 0x40, 0x20}
-	,{0x38, 0x08, 0x08, 0x08, 0x08}
-	,{0x08, 0x08, 0x08, 0x08, 0x38}
-	,{0x2F, 0x10, 0xC8, 0xAC, 0xBA}
-	,{0x2F, 0x10, 0x28, 0x34, 0xFA}
-	,{0x00, 0x00, 0x7B, 0x00, 0x00}
-	,{0x08, 0x14, 0x2A, 0x14, 0x22}
-	,{0x22, 0x14, 0x2A, 0x14, 0x08}
-	,{0xAA, 0x00, 0x55, 0x00, 0xAA}
-	,{0xAA, 0x55, 0xAA, 0x55, 0xAA}
-	,{0x00, 0x00, 0x00, 0xFF, 0x00}
-	,{0x10, 0x10, 0x10, 0xFF, 0x00}
-	,{0x14, 0x14, 0x14, 0xFF, 0x00}
-	,{0x10, 0x10, 0xFF, 0x00, 0xFF}
-	,{0x10, 0x10, 0xF0, 0x10, 0xF0}
-	,{0x14, 0x14, 0x14, 0xFC, 0x00}
-	,{0x14, 0x14, 0xF7, 0x00, 0xFF}
-	,{0x00, 0x00, 0xFF, 0x00, 0xFF}
-	,{0x14, 0x14, 0xF4, 0x04, 0xFC}
-	,{0x14, 0x14, 0x17, 0x10, 0x1F}
-	,{0x10, 0x10, 0x1F, 0x10, 0x1F}
-	,{0x14, 0x14, 0x14, 0x1F, 0x00}
-	,{0x10, 0x10, 0x10, 0xF0, 0x00}
-	,{0x00, 0x00, 0x00, 0x1F, 0x10}
-	,{0x10, 0x10, 0x10, 0x1F, 0x10}
-	,{0x10, 0x10, 0x10, 0xF0, 0x10}
-	,{0x00, 0x00, 0x00, 0xFF, 0x10}
-	,{0x10, 0x10, 0x10, 0x10, 0x10}
-	,{0x10, 0x10, 0x10, 0xFF, 0x10}
-	,{0x00, 0x00, 0x00, 0xFF, 0x14}
-	,{0x00, 0x00, 0xFF, 0x00, 0xFF}
-	,{0x00, 0x00, 0x1F, 0x10, 0x17}
-	,{0x00, 0x00, 0xFC, 0x04, 0xF4}
-	,{0x14, 0x14, 0x17, 0x10, 0x17}
-	,{0x14, 0x14, 0xF4, 0x04, 0xF4}
-	,{0x00, 0x00, 0xFF, 0x00, 0xF7}
-	,{0x14, 0x14, 0x14, 0x14, 0x14}
-	,{0x14, 0x14, 0xF7, 0x00, 0xF7}
-	,{0x14, 0x14, 0x14, 0x17, 0x14}
-	,{0x10, 0x10, 0x1F, 0x10, 0x1F}
-	,{0x14, 0x14, 0x14, 0xF4, 0x14}
-	,{0x10, 0x10, 0xF0, 0x10, 0xF0}
-	,{0x00, 0x00, 0x1F, 0x10, 0x1F}
-	,{0x00, 0x00, 0x00, 0x1F, 0x14}
-	,{0x00, 0x00, 0x00, 0xFC, 0x14}
-	,{0x00, 0x00, 0xF0, 0x10, 0xF0}
-	,{0x10, 0x10, 0xFF, 0x10, 0xFF}
-	,{0x14, 0x14, 0x14, 0xFF, 0x14}
-	,{0x10, 0x10, 0x10, 0x1F, 0x00}
-	,{0x00, 0x00, 0x00, 0xF0, 0x10}
-	,{0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
-	,{0xF0, 0xF0, 0xF0, 0xF0, 0xF0}
-	,{0xFF, 0xFF, 0xFF, 0x00, 0x00}
-	,{0x00, 0x00, 0x00, 0xFF, 0xFF}
-	,{0x0F, 0x0F, 0x0F, 0x0F, 0x0F}
-	,{0x38, 0x44, 0x44, 0x38, 0x44}
-,{0x66, 0x18, 0x8, 0x4, 0x7e}
-,{0x84, 0x84, 0x84, 0xfc, 0x80}
-,{0x0, 0xe4, 0x24, 0xfc, 0x0}
-,{0x4, 0x4, 0x4, 0xfc, 0x4}
-,{0xe4, 0x4, 0x4, 0x4, 0xfc}
-,{0x0, 0x4, 0xfc, 0x0, 0x0}
-,{0x0, 0x2, 0x7e, 0x2, 0x0}
-,{0xfc, 0x4, 0x4, 0x4, 0xfc}
-,{0xfc, 0x80, 0x8c, 0x84, 0xfc}
-,{0x0, 0x8, 0x8, 0x38, 0x0}
-,{0x2, 0x2, 0xe2, 0x1e, 0x0}
-,{0x84, 0x84, 0x84, 0x84, 0xfc}
-,{0x6, 0x84, 0x44, 0x24, 0x1c}
-,{0xfc, 0x84, 0x84, 0x84, 0xfc}
-,{0x3c, 0x88, 0x84, 0x84, 0xfc}
-,{0x0, 0x2, 0xfe, 0x0, 0x0}
-,{0x0, 0x80, 0x80, 0x84, 0xfc}
-,{0x3e, 0x42, 0x42, 0x42, 0x3e}
-,{0x40, 0x7e, 0x40, 0x40, 0x7e}
-,{0x1e, 0x12, 0x2, 0xfe, 0x0}
-,{0x5e, 0x52, 0x42, 0x42, 0x7e}
-,{0x0, 0xfe, 0x10, 0x8, 0x6}
-,{0x42, 0x44, 0x48, 0x58, 0x66}
-,{0xf2, 0x2, 0x2, 0x22, 0x1e}
-,{0x2, 0x2, 0x2, 0x2, 0x7e}
-,{0x7e, 0x50, 0x4e, 0x40, 0x3e}
-,{0x42, 0x7e, 0x2, 0x2, 0x7e}
-  ,{0xC, 0x2, 0xFF, 0x80, 0x80}
-  ,{0x0, 0xF8, 0x80, 0x80, 0x78}
-  ,{0x0, 0x98, 0xB8, 0xE8, 0x48}
-  ,{0x0, 0x3C, 0x3C, 0x3C, 0x3}
 };
 
 
@@ -368,7 +334,8 @@ void drawLine(void)
 #define DEVICE_TYPE 0x10
 #define MAX_STR_LEN (12*6)
 #define MAX_SCREENS 10
-#define SCREEN_TIME 4000 //time to view screen in mili
+#define SCREEN_TIME 4000 //time to view screen in milli
+#define DEFAULT_COLOR c_blue
 const uint16_t MAGIC_CODE = 0xDE12;
 // Set up nRF24L01 radio on SPI bus plus pins 9 & 10
 
@@ -378,17 +345,19 @@ RF24 radio(9,10);
 uint64_t pipes[2] = {0xF0F0F0F0D2LL,  0xF0F0F0F0E1LL};
 
 typedef enum {stand_alone=0, first_packet=1, continued_packet=2, last_packet=3} packet_type_e;
-typedef enum{date=0x1, string=0x2, bitmap=0x3}data_type_e;
-
+typedef enum{date=0x1, string=0x2, bitmap=0x3,color_string=0x4,remove_id=0x10}data_type_e;
+typedef enum{c_red=1, c_green=2, c_blue=3,c_purple=4,c_yellow=5,c_aqua=6} color_type_e;
 uint8_t inited = 0;
 uint8_t radio_buf[32];
 uint8_t data[100];
 uint8_t screens[MAX_SCREENS][MAX_STR_LEN+1];
 uint8_t screens_size[MAX_SCREENS];
+uint8_t screens_color[MAX_SCREENS];
 unsigned int data_len = 0;
 unsigned int current_ptr = 0;
 unsigned int last_screen_id = 0;
-unsigned int last_screen_time = 0;
+unsigned long last_screen_time = 0;
+uint8_t current_color = c_blue;
 
 typedef struct store {
     uint16_t magic_code;
@@ -412,6 +381,22 @@ typedef struct date_cmd {
 } date_cmd_t;
 store_t config_settings;
 
+void color_out(int color){
+  if(c_red == color)
+    red(0);
+  if(c_blue == color)
+    blue(0);
+  if(c_purple == color)
+    purple(0);
+  if(c_yellow == color)
+    yellow(0);
+  if(c_green == color)
+    green(0);
+  if(c_aqua == color)
+    aqua(0);
+    
+}
+
 void digitalClockDisplay(){
      LcdClear();
      drawLine();
@@ -426,12 +411,12 @@ void digitalClockDisplay(){
   printDigits(year(),4,0);
 }
 
-void printDigits(int digits, int num_of_digits, char delimiter){
+void printDigits(unsigned long digits, int num_of_digits, char delimiter){
   // utility function for digital clock display: prints preceding colon and leading 0
   for(int i=num_of_digits-1;i>=0;i--) {
     int d= (digits/pow(10,i));
     d=d%10;
-    printf( "digit: %d, d:%d, i:%d ddd: %d\n", digits, d,i,pow(10,i));
+    //printf( "digit: %d, d:%d, i:%d ddd: %d\n", digits, d,i,pow(10,i));
     LcdCharacter('0'+d);
   }
   if(delimiter)
@@ -447,6 +432,7 @@ void handle_message() {
                     config_settings.magic_code = MAGIC_CODE;
                     eeprom_write_block((const void*)&config_settings, (void*)0, sizeof(config_settings));
               }
+             last_screen_time = 0;
               inited = 1;
         }
         else if (cmd==date) {
@@ -463,7 +449,27 @@ void handle_message() {
              }
              memcpy(screens[id-1], data+2, data_len-2);
              screens_size[id-1] = data_len - 2;
-             screens[id-1][data_len] = 0; //verify null termination
+             screens[id-1][data_len-2] = 0; //verify null termination
+             screens_color[id-1] = DEFAULT_COLOR;
+        }
+        else if (cmd==color_string) {
+            uint8_t id = data[1];
+            if ((id>10) || ((data_len - 3) > MAX_STR_LEN)) {
+                  //support only 10 id's
+                  data_len = 0;
+                  current_ptr = 0;
+                  return;
+             }             
+             memcpy(screens[id-1], data+3, data_len-3);
+             screens_size[id-1] = data_len - 3;
+             screens_color[id-1] = data[2];
+             screens[id-1][data_len-3] = 0; //verify null termination
+        }
+        else if (cmd==remove_id) {
+            uint8_t id = data[1];
+            if(id>0 && id <= 10){
+             screens_size[id-1] = 0;
+            }
         }
         data_len = 0;
         current_ptr = 0;
@@ -484,28 +490,29 @@ void handle_read(uint8_t* buf, unsigned int len){
         data_len = *((uint16_t*)(buf+1));
         memcpy(data, buf+3, msg_len-3);
         current_ptr = msg_len-3;
-        printf("got first message, total len: %d\n", data_len);
+        //printf("got first message, total len: %d\n", data_len);
         return;
     }    
     else if(continued_packet==msg_type) {
       if(!current_ptr) {
-          printf("got invalid continued message\n");
+          //printf("got invalid continued message\n");
       }
         memcpy(data+current_ptr, buf+1, msg_len-1);
         current_ptr += msg_len-1;
-        if(current_ptr > data_len)
-                printf("invalid continued message, ptr overflow\n");
+        if(current_ptr > data_len) {
+               // printf("invalid continued message, ptr overflow\n");
+        }
         return;
     }    
     else if(last_packet==msg_type) {
       if(!current_ptr) {
-          printf("got invalid last message\n");
+          //printf("got invalid last message\n");
           return;  
     }
         memcpy(data+current_ptr, buf+1, msg_len-1);
         current_ptr += msg_len-1;
-        if(current_ptr+1 != data_len) {
-                printf("invalid ptr: %d, data len: %d\n", current_ptr, data_len);
+        if(current_ptr != data_len) {
+                //printf("invalid ptr: %d, data len: %d\n", current_ptr, data_len);
                 return;
         }
         handle_message();        
@@ -520,18 +527,20 @@ void handle_write(void* buf, unsigned int len){
      if(len<radio.getPayloadSize()) {
          tx_buf[0] = (stand_alone << 6) | (len+1);
          memcpy(tx_buf+1, buf, len);
-         printf("sending message, length: %d content:\n", len);
+         //printf("sending message, length: %d content:\n", len);
          for(int i=0;i<len+1;i++) {
-             printf("0x%X ", tx_buf[i]);
+             //printf("0x%X ", tx_buf[i]);
          }
-         printf("\n");
+         //printf("\n");
          radio.stopListening();
          int success = radio.write(tx_buf, len+1);
          radio.startListening();
-         if(success)
-             printf("send single packet succeded\n");
-         else
-             printf("send single packet failed\n");
+         if(success) {
+            // printf("send single packet succeded\n");
+         }
+         else{
+             //printf("send single packet failed\n");
+         }
          return;
      }
 }
@@ -550,10 +559,16 @@ void send_init_packet() {
 void setup()
 {
         Serial.begin(9600);
+        pinMode(A0, OUTPUT);
+        pinMode(A1, OUTPUT);
+        pinMode(A2, OUTPUT);
+        digitalWrite(A0, HIGH);
+        digitalWrite(A2, HIGH);
+        digitalWrite(A1, HIGH);
        LcdInitialise();
        LcdClear();
-        printf_begin();
-        printf("\n\rNokia screen receiver\n\r");
+        //printf_begin();
+        //printf("\n\rNokia screen receiver\n\r");
         randomSeed(analogRead(0));
         eeprom_read_block((void*)&config_settings, (void*)0, sizeof(config_settings));
         // Setup and configure rf radio
@@ -581,25 +596,30 @@ void setup()
 void next_screen()
 {
 //  Serial.printf("going to refresh screen\n") ;
-    if (abs(now() - last_screen_time) < SCREEN_TIME) {
+    if (((millis() - last_screen_time) < SCREEN_TIME && (last_screen_time < millis()))) {
+   //   LcdCharacter('a');
         return;
     }
-   last_screen_time = now();
+
+   last_screen_time = millis();
    last_screen_id=(last_screen_id+1) % (MAX_SCREENS+1);
     while(last_screen_id && !screens_size[last_screen_id-1])
           last_screen_id=(last_screen_id+1) % (MAX_SCREENS+1);
     if(!last_screen_id){
-//              LcdClear();
-//              digitalClockDisplay();
+              LcdClear();
+              digitalClockDisplay();
+              current_color = c_blue;
               return;
     }
      LcdClear();
+     current_color = screens_color[last_screen_id-1];
      LcdString((char*)screens[last_screen_id-1]);
 }
 
 void loop()
 {
         if (!inited) {
+          red(100);
             LcdClear();
             LcdString("Not Registered, trying to connect host");
             printf("not initialized, trying to connect host\n");
@@ -610,20 +630,24 @@ void loop()
         unsigned long started_waiting_at = millis();
         bool timeout = false;
         while (!radio.available() && ! timeout) {
-            if (millis() - started_waiting_at > 1000)
+            if (millis() - started_waiting_at > 200)
                timeout = true;
         }
         if (!timeout) {
     //        radio.stopListening();
             uint8_t payload_size = radio.getPayloadSize();
             radio.read(radio_buf, payload_size);
-            printf("got message, length: %d content: ", payload_size);
+            /*printf("got message, length: %d content: ", payload_size);
             for(int i=0;i<payload_size;i++)
                 printf("0x%X ", radio_buf[i]);
-            printf("\n");            
+            printf("\n");*/            
             handle_read(radio_buf, payload_size);
         }
+        else {
+                  digitalWrite(BLUE_PIN, HIGH);
+                    color_out(current_color);
+        }
+        digitalWrite(BLUE_PIN, LOW);
         next_screen();
-      delay(10);
 }
 
