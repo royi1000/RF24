@@ -2,7 +2,9 @@ import rf_prot
 import shelve
 import time
 import struct
+import urllib2
 from datetime import datetime
+from xml.dom.minidom import parse
 from exceptions import *
 
 def enum(**enums):
@@ -60,7 +62,33 @@ class LongTest(App):
         self.last_time = seconds()
         return  chr(DATA_TYPE.string) + chr(_id) + 'long test' * 4
 
-
+class Gmail(App):
+    APP_NAME='gmail'
+    def get_data(self, _id):
+        user,passwd = open('gmail.txt').readline().split(',')
+        self.count = get_unread_msgs(user,passwd)
+        if count:
+            return chr(DATA_TYPE.string) + chr(_id) + 'Gmail: unread count {}'.format(count)
+            self.last_time = seconds()
+            return ''
+            
+    def valid(self):
+        return self.count
+        
+    def get_unread_msgs(user, passwd):
+        auth_handler = urllib2.HTTPBasicAuthHandler()
+        auth_handler.add_password(
+        realm='New mail feed',
+        uri='https://mail.google.com',
+        user='%s@gmail.com' % user,
+        passwd=passwd)
+        opener = urllib2.build_opener(auth_handler)
+        urllib2.install_opener(opener)
+        feed = urllib2.urlopen('https://mail.google.com/mail/feed/atom')
+        dom=parse(feed.read())
+        count_obj = dom.getElementsByTagName("fullcount")[0]
+        # get its text and convert it to an integer
+        return int(count_obj.firstChild.wholeText)
 
 class Sensor(object):
     REP_STR = "Sensor data: {}"
