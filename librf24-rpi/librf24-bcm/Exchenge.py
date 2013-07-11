@@ -12,7 +12,7 @@ def enum(**enums):
 
 COMMAND_TYPE = enum(device_init=0xf0, device_init_response=0xf1, sensor_data=0x10, screen_data=0x11)
 DEVICE_TYPE = enum(screen=0x10, sensor=0x20)
-DATA_TYPE = enum(date=0x1, string=0x2, bitmap=0x3, color_string=0x4, remove_id=0x10)
+DATA_TYPE = enum(date=0x1, string=0x2, bitmap=0x3, color_string=0x4, remove_id=0x10, end_tx=0x20)
 COLOR_TYPE = enum(c_red=1, c_green=2, c_blue=3,c_purple=4,c_yellow=5,c_aqua=6)
 
 
@@ -25,9 +25,11 @@ class App(object):
         self.interval = interval
         self.last_data = ''
 
-    def get_data(self, _id):
+    def update_data(self, _id):
         self.last_time = seconds()
-        raise NotImplemented
+                    
+    def get_data(self, _id):
+        return self.data
 
     def should_run(self):
         if self.last_time + self.interval > seconds():
@@ -43,36 +45,44 @@ class DT(App):
     APP_NAME = 'time'
     def valid(self):
         return True
+
     def get_data(self, _id):
+        self.update_data(_id)
+        return self.data
+        
+    def update_data(self, _id):
         self.last_time = seconds()
         dt = datetime.now().timetuple()[0:6]
-        return chr(DATA_TYPE.date) + struct.pack('HBBBBB', *dt)
+        self.data = chr(DATA_TYPE.date) + struct.pack('HBBBBB', *dt)
         
 class ShortTest(App):
     APP_NAME='shorttest'
     def valid(self):
         return True
+    
     def get_data(self, _id):
-        self.last_time = seconds()
         return chr(DATA_TYPE.color_string) + chr(_id) + chr(COLOR_TYPE.c_green) +  'short test'
     
 class LongTest(App):
     APP_NAME='longtest'
     def valid(self):
         return True
+        
     def get_data(self,_id):
-        self.last_time = seconds()
         return  chr(DATA_TYPE.color_string) + chr(_id) +  chr(COLOR_TYPE.c_yellow) +  'long test' * 4
 
 class Gmail(App):
     APP_NAME='gmail'
-    def get_data(self, _id):
+    def update_data(self, _id):
         user,passwd = open('gmail.txt').readline().split(',')
         self.count = self.get_unread_msgs(user,passwd)
+        self.last_time = seconds()
+
+
+    def get_data(self,_id):
         if self.count:
             return chr(DATA_TYPE.color_string) + chr(_id) +  chr(COLOR_TYPE.c_purple) +  'Gmail unread{}'.format(self.count)
-            self.last_time = seconds()
-            return ''
+        return ''
             
     def valid(self):
         return self.count
@@ -144,31 +154,25 @@ class RFExchange(object):
                 time.sleep(0.05)
                 self._rf.write(addr, data[:10])
 
-    def send_invalid(self, _id):
-        data = chr(DATA_TYPE.remove_id) + chr(_id)
-        self.send_data(data)
+                for _id, app in enumerate(self.apps):
+                    if app.valid():
+                        data = app.get_data(_id)
+                        print repr(data)
+                        self._rf.write(addr, data)
+                    else:
+                        data = chr(DATA_TYPE.remove_id) + chr(_id)
+                        self._rf.write(addr, data)
 
-    def send_data(self, data):
-        for addr in self._db['out_devices']:
-            print "sending data {} to device: {}".format(repr(data), addr)
-            self._rf.write(addr, data)
-                    
+    def send_end_tx_msg(self, addr):
+        data = chr(DATA_TYPE.end_tx)
+        self._rf.write(addr, data)
+                        
     def run(self):
         try:
             while True:
                 (pipe, data) = self._rf.read(5000)
                 if data:
                     self.handle_rx_data(data)
-                changed = []
-                for _id, app in enumerate(self.apps):
-                    if app.should_run():
-                        data = app.get_data(_id)
-                        print repr(data)
-                        if app.valid():
-                            self.send_data(data)
-                        else:
-                            self.send_invalid(_id)
-                        #changed.append(app.APP_NAME)
                 for _id, sensor in self._db['sensors'].items():
                     if sensor.is_new_data:
                         changed.append(_id)
