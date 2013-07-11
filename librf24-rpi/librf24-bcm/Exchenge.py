@@ -170,12 +170,16 @@ class RFExchange(object):
     def run(self):
         try:
             while True:
-                (pipe, data) = self._rf.read(5000)
-                if data:
-                    self.handle_rx_data(data)
+                for _id, app in enumerate(self.apps):
+                    if app.should_run():
+                        app.update_data(_id)
                 for _id, sensor in self._db['sensors'].items():
                     if sensor.is_new_data:
                         changed.append(_id)
+                (pipe, data) = self._rf.read(5000)
+                if data:
+                    self.handle_rx_data(data)
+                
         finally:
             self._db.close()
 
