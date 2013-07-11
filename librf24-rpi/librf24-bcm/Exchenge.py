@@ -15,6 +15,17 @@ DEVICE_TYPE = enum(screen=0x10, sensor=0x20)
 DATA_TYPE = enum(date=0x1, string=0x2, bitmap=0x3, color_string=0x4, remove_id=0x10, end_tx=0x20)
 COLOR_TYPE = enum(c_red=1, c_green=2, c_blue=3,c_purple=4,c_yellow=5,c_aqua=6)
 
+colors = {'red':(200,0,0),
+          'green':(0,200,0),
+          'blue':(0,0,200),
+          'purple':(200,0,200),
+          'aqua':(0,200,200),
+          'yellow':(200,200,0),
+          'orange':(200,100,0),
+         }
+
+def set_rgb(red1,green1,blue1,red2,green2,blue2):
+    return chr(red1)+chr(green1)+chr(blue1)+chr(red2)+chr(green2)+chr(blue2)
 
 def seconds(): return int(round(time.time()))
 
@@ -61,7 +72,7 @@ class ShortTest(App):
         return True
     
     def get_data(self, _id):
-        return chr(DATA_TYPE.color_string) + chr(_id) + chr(COLOR_TYPE.c_green) +  'short test'
+        return chr(DATA_TYPE.color_string) + chr(_id) + set_rgb(*(colors['red'] + colors['orange'])) +  'short test'
     
 class LongTest(App):
     APP_NAME='longtest'
@@ -69,7 +80,7 @@ class LongTest(App):
         return True
         
     def get_data(self,_id):
-        return  chr(DATA_TYPE.color_string) + chr(_id) +  chr(COLOR_TYPE.c_yellow) +  'long test' * 4
+        return  chr(DATA_TYPE.color_string) + chr(_id) +  set_rgb(*(colors['purple'] + colors['aqua'])) +  'long test ' * 4
 
 class Gmail(App):
     APP_NAME='gmail'
@@ -81,7 +92,7 @@ class Gmail(App):
 
     def get_data(self,_id):
         if self.count:
-            return chr(DATA_TYPE.color_string) + chr(_id) +  chr(COLOR_TYPE.c_purple) +  'Gmail unread{}'.format(self.count)
+            return chr(DATA_TYPE.color_string) + chr(_id) +  set_rgb(*(colors['blue'] + colors['green'])) +  'Gmail unread{}'.format(self.count)
         return ''
             
     def valid(self):
