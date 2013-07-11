@@ -27,11 +27,21 @@ uint64_t pipes[2] = {0xF0F0F0F0D2LL,  0xF0F0F0F0E1LL};
 typedef enum {stand_alone=0, first_packet=1, continued_packet=2, last_packet=3} packet_type_e;
 typedef enum{date=0x1, string=0x2, bitmap=0x3,color_string=0x4,remove_id=0x10,end_tx=0x20} data_type_e;
 typedef enum{c_red=1, c_green=2, c_blue=3,c_purple=4,c_yellow=5,c_aqua=6} color_type_e;
+
+typedef struct led_s{
+    uint8_t red1;  
+    uint8_t green1;
+    uint8_t blue1;
+    uint8_t red2;
+    uint8_t green2;  
+    uint8_t blue2;  
+}led_t;
+
 uint8_t radio_buf[32];
 uint8_t data[100];
 uint8_t screens[MAX_SCREENS][MAX_STR_LEN+1];
 uint8_t screens_size[MAX_SCREENS];
-uint8_t screens_color[MAX_SCREENS];
+led_t screens_color[MAX_SCREENS];
 unsigned int data_len = 0;
 unsigned int current_ptr = 0;
 unsigned int last_screen_id = 0;
@@ -62,20 +72,24 @@ typedef struct date_cmd {
 } date_cmd_t;
 store_t config_settings;
 
-void color_out(int color){
-    if(c_red == color)
-        red(0);
-    if(c_blue == color)
-        blue(0);
-    if(c_purple == color)
-        purple(0);
-    if(c_yellow == color)
-        yellow(0);
-    if(c_green == color)
-        green(0);
-    if(c_aqua == color)
-        aqua(0);
-
+void color_out(){
+  if(!last_screen_id)
+      return;
+      fade(screens_color[last_screen_id-1].red1,
+                screens_color[last_screen_id-1].green1,
+                screens_color[last_screen_id-1].blue1,
+                screens_color[last_screen_id-1].red2,
+                screens_color[last_screen_id-1].green2,
+                screens_color[last_screen_id-1].blue2,
+                5);
+      fade(screens_color[last_screen_id-1].red2,
+                screens_color[last_screen_id-1].green2,
+                screens_color[last_screen_id-1].blue2,
+                screens_color[last_screen_id-1].red1,
+                screens_color[last_screen_id-1].green1,
+                screens_color[last_screen_id-1].blue1,
+                5);  
+                
 }
 
 void digitalClockDisplay(){
@@ -137,7 +151,7 @@ void handle_message() {
         memcpy(screens[id-1], data+2, data_len-2);
         screens_size[id-1] = data_len - 2;
         screens[id-1][data_len-2] = 0; //verify null termination
-        screens_color[id-1] = DEFAULT_COLOR;
+        memset(&screens_color[id-1], 0, sizeof(led_t)) ;
     }
     else if (cmd==color_string) {
         uint8_t id = data[1];
@@ -147,10 +161,10 @@ void handle_message() {
             current_ptr = 0;
             return;
         }
-        memcpy(screens[id-1], data+3, data_len-3);
+        memcpy(screens[id-1], data+2+sizeof(led_t), data_len-2-sizeof(led_t));
         screens_size[id-1] = data_len - 3;
-        screens_color[id-1] = data[2];
-        screens[id-1][data_len-3] = 0; //verify null termination
+        memcpy(&screens_color[id-1], data+2, sizeof(led_t));
+        screens[id-1][data_len-2-sizeof(led_t)] = 0; //verify null termination
     }
     else if (cmd==remove_id) {
         uint8_t id = data[1];
@@ -301,7 +315,6 @@ void next_screen()
         return;
     }
     LcdClear();
-    current_color = screens_color[last_screen_id-1];
     LcdString((char*)screens[last_screen_id-1]);
 }
 
@@ -331,6 +344,6 @@ void get_data_from_master()
 void loop()
 {
     get_data_from_master();
-    color_out(current_color);
+    color_out();
     next_screen();
 }
