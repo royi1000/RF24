@@ -422,7 +422,7 @@ void printDigits(unsigned long digits, int num_of_digits, char delimiter){
 
 }
 
-bool is_timeouted(last, timeout_interval /*millis*/)
+bool is_timeouted(unsigned long last, unsigned long timeout_interval /*millis*/)
 {
     if (((millis() - last) < timeout_interval && (last < millis())))
         return false;
@@ -433,8 +433,6 @@ bool is_timeouted(last, timeout_interval /*millis*/)
 void handle_message() {
     uint8_t cmd = data[0];
     if(cmd==COMMAND_INIT_RESPONSE) {
-        LcdClear();
-        LcdString("Registered, waiting for data");
         if(config_settings.magic_code != MAGIC_CODE) {
             config_settings.magic_code = MAGIC_CODE;
             eeprom_write_block((const void*)&config_settings, (void*)0, sizeof(config_settings));
@@ -603,14 +601,16 @@ void setup()
 
 void next_screen()
 {
-    if (!is_timeouted(last_screen_time, SCREEN_TIME) {
+    if (!is_timeouted(last_screen_time, SCREEN_TIME)) {
         return;
     }
 
     last_screen_time = millis();
     last_screen_id=(last_screen_id+1) % (MAX_SCREENS+1);
-    while(last_screen_id && !screens_size[last_screen_id-1])
+        LcdClear();
+    while(last_screen_id && !screens_size[last_screen_id-1]) {
         last_screen_id=(last_screen_id+1) % (MAX_SCREENS+1);
+    }
     if(!last_screen_id){
         LcdClear();
         digitalClockDisplay();
@@ -624,23 +624,16 @@ void next_screen()
 
 void get_data_from_master()
 {
-    if(!is_timeouted(last_update_time, UPDATE_INTERVAL))
+    if(!is_timeouted(last_update_time, UPDATE_INTERVAL) || last_screen_id)
     {
         return;
     }
-    radio.stopListening();
+    last_update_time = millis();
     send_init_packet();
-    radio.startListening();
-
-}
-
-void loop()
-{
     bool timeout = false;
     end_transmission = false;
-
     while(!timeout && !end_transmission) {
-        if (is_timeouted(started_waiting_at, 200)) {
+        if (is_timeouted(last_update_time, 1000)) {
             timeout = true;
         }
         else if(radio.available()){
@@ -649,6 +642,12 @@ void loop()
             handle_read(radio_buf, payload_size);
         }
     }
+
+}
+
+void loop()
+{
+    get_data_from_master();
     color_out(current_color);
     next_screen();
 }
