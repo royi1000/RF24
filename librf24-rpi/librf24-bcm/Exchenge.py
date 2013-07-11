@@ -151,9 +151,7 @@ class RFExchange(object):
                     x.append(addr)
                     self._db['out_devices'] = x
                 data=chr(COMMAND_TYPE.device_init_response)+data[1:]
-                time.sleep(0.05)
                 self._rf.write(addr, data[:10])
-
                 for _id, app in enumerate(self.apps):
                     if app.valid():
                         data = app.get_data(_id)
@@ -162,6 +160,7 @@ class RFExchange(object):
                     else:
                         data = chr(DATA_TYPE.remove_id) + chr(_id)
                         self._rf.write(addr, data)
+                self.send_end_tx_msg(addr)
 
     def send_end_tx_msg(self, addr):
         data = chr(DATA_TYPE.end_tx)
