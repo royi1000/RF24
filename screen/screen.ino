@@ -8,7 +8,11 @@
 #include "led.h"
 #include "lcd.h"
 #include "sound.h"
+#include "DHT.h"
 
+DHT dht;
+
+#define DHT22_PIN 2
 #define PAYLOAD_SIZE 20
 #define COMMAND_INIT 0xF0
 #define COMMAND_INIT_RESPONSE 0xF1
@@ -266,7 +270,8 @@ void setup()
     digitalWrite(A1, HIGH);
     LcdInitialise();
     LcdClear();
-    //printf_begin();
+    dht.setup(2); // data pin 2
+  //printf_begin();
     //printf("\n\rNokia screen receiver\n\r");
     randomSeed(analogRead(0));
     eeprom_read_block((void*) &config_settings, (void*) 0, sizeof(config_settings));
@@ -343,7 +348,10 @@ void get_data_from_master()
 
 void loop()
 {
-    get_data_from_master();
+ // READ DATA
+  float humidity = dht.getHumidity();
+  float temperature = dht.getTemperature();
+  get_data_from_master();
     color_out();
     next_screen();
 }
