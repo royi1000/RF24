@@ -37,5 +37,6 @@ void LcdString(char *characters);
 void LcdWrite(byte dc, byte data);
 void gotoXY(int x, int y);
 void drawLine(void);
+void printDigits(unsigned long digits, int num_of_digits, char delimiter);
 
 #endif

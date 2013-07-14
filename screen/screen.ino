@@ -1,3 +1,4 @@
+#include <avr/pgmspace.h>
 #include <avr/eeprom.h>
 #include <SPI.h>
 #include <EEPROM.h>
@@ -107,19 +108,6 @@ void digitalClockDisplay(){
     printDigits(day(),2,'/');
     printDigits(month(),2,'/');
     printDigits(year(),4,0);
-}
-
-void printDigits(unsigned long digits, int num_of_digits, char delimiter){
-    // utility function for digital clock display: prints preceding colon and leading 0
-    for(int i=num_of_digits-1;i>=0;i--) {
-        int d= (digits/pow(10,i));
-        d=d%10;
-        //printf( "digit: %d, d:%d, i:%d ddd: %d\n", digits, d,i,pow(10,i));
-        LcdCharacter('0'+d);
-    }
-    if(delimiter)
-        LcdCharacter(delimiter);
-
 }
 
 bool is_timeouted(unsigned long last, unsigned long timeout_interval /*millis*/)
@@ -272,6 +260,7 @@ void setup()
     pinMode(A0, OUTPUT);
     pinMode(A1, OUTPUT);
     pinMode(A2, OUTPUT);
+    pinMode(SOUND_PIN, OUTPUT);
     digitalWrite(A0, HIGH);
     digitalWrite(A2, HIGH);
     digitalWrite(A1, HIGH);
@@ -300,7 +289,6 @@ void setup()
 
     radio.startListening();
     radio.printDetails();
-
 }
 
 void next_screen()
@@ -346,6 +334,8 @@ void get_data_from_master()
         }
     }
     if(sound_len) {
+    for (unsigned int thisNote = 0; thisNote < sound_len; thisNote++) {
+    }
         play_tones(sound_data, sound_len);
         sound_len = 0;
     }

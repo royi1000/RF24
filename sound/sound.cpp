@@ -1,7 +1,7 @@
 #include "sound.h"
 
-static const uint16_t tones[] =
-    {NOTE_B0,NOTE_C1,NOTE_CS1,NOTE_D1,NOTE_DS1,NOTE_E1,NOTE_F1,NOTE_FS1,NOTE_G1,
+static const prog_uint16_t  tone_list[]  PROGMEM =  {
+     NOTE_B0,NOTE_C1,NOTE_CS1,NOTE_D1,NOTE_DS1,NOTE_E1,NOTE_F1,NOTE_FS1,NOTE_G1,
      NOTE_GS1,NOTE_A1,NOTE_AS1,NOTE_B1,NOTE_C2,NOTE_CS2,NOTE_D2,NOTE_DS2,NOTE_E2,
      NOTE_F2,NOTE_FS2,NOTE_G2,NOTE_GS2,NOTE_A2,NOTE_AS2,NOTE_B2,NOTE_C3,NOTE_CS3,
      NOTE_D3,NOTE_DS3,NOTE_E3,NOTE_F3,NOTE_FS3,NOTE_G3,NOTE_GS3,NOTE_A3,NOTE_AS3,
@@ -13,7 +13,7 @@ static const uint16_t tones[] =
      NOTE_GS7,NOTE_A7,NOTE_AS7,NOTE_B7,NOTE_C8,NOTE_CS8,NOTE_D8,NOTE_DS8
     };
 
-void play_tones(uint8_t* buf, unsigned int len) {
+void play_tones(uint8_t* melody, unsigned int len) {
     for (unsigned int thisNote = 0; thisNote < len; thisNote++) {
 
         // to calculate the note duration, take one second
@@ -25,7 +25,8 @@ void play_tones(uint8_t* buf, unsigned int len) {
         if (melody[thisNote] & 0x80) {
             noteDuration = 1000/8;
         }
-        tone(SOUND_PIN, (melody[thisNote] & 0x7F),noteDuration);
+		uint16_t t = pgm_read_word(tone_list + (melody[thisNote] & 0x7F));
+        tone(SOUND_PIN, t,noteDuration);
 
         // to distinguish the notes, set a minimum time between them.
         // the note's duration + 30% seems to work well:
