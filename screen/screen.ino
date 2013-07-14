@@ -6,6 +6,7 @@
 #include "RF24.h"
 #include "led.h"
 #include "lcd.h"
+#include "sound.h"
 
 #define PAYLOAD_SIZE 20
 #define COMMAND_INIT 0xF0
@@ -25,16 +26,16 @@ RF24 radio(9,10);
 uint64_t pipes[2] = {0xF0F0F0F0D2LL,  0xF0F0F0F0E1LL};
 
 typedef enum {stand_alone=0, first_packet=1, continued_packet=2, last_packet=3} packet_type_e;
-typedef enum{date=0x1, string=0x2, bitmap=0x3,color_string=0x4,remove_id=0x10,end_tx=0x20} data_type_e;
-typedef enum{c_red=1, c_green=2, c_blue=3,c_purple=4,c_yellow=5,c_aqua=6} color_type_e;
+typedef enum{date=0x1, string=0x2, bitmap=0x3, color_string=0x4, sound=0x5, remove_id=0x10, end_tx=0x20} data_type_e;
+typedef enum{c_red=1, c_green=2, c_blue=3, c_purple=4, c_yellow=5, c_aqua=6} color_type_e;
 
 typedef struct led_s{
-    uint8_t red1;  
+    uint8_t red1;
     uint8_t green1;
     uint8_t blue1;
     uint8_t red2;
-    uint8_t green2;  
-    uint8_t blue2;  
+    uint8_t green2;
+    uint8_t blue2;
 }led_t;
 
 uint8_t radio_buf[32];
@@ -42,11 +43,13 @@ uint8_t data[100];
 uint8_t screens[MAX_SCREENS][MAX_STR_LEN+1];
 uint8_t screens_size[MAX_SCREENS];
 led_t screens_color[MAX_SCREENS];
+uint8_t sound_data[100];
 unsigned int data_len = 0;
 unsigned int current_ptr = 0;
 unsigned int last_screen_id = 0;
 unsigned long last_screen_time = 0;
 unsigned long last_update_time = 0;
+unsigned int sound_len = 0;
 uint8_t current_color = c_blue;
 bool end_transmission = false;
 
@@ -88,8 +91,8 @@ void color_out(){
                 screens_color[last_screen_id-1].red1,
                 screens_color[last_screen_id-1].green1,
                 screens_color[last_screen_id-1].blue1,
-                5);  
-                
+                5);
+
 }
 
 void digitalClockDisplay(){
@@ -152,6 +155,10 @@ void handle_message() {
         screens_size[id-1] = data_len - 2;
         screens[id-1][data_len-2] = 0; //verify null termination
         memset(&screens_color[id-1], 0, sizeof(led_t)) ;
+    }
+    else if (cmd==sound) {
+        memcpy(sound_data, data+1, data_len-1);
+        sound_len = data_len - 1;
     }
     else if (cmd==color_string) {
         uint8_t id = data[1];
@@ -338,7 +345,10 @@ void get_data_from_master()
             handle_read(radio_buf, payload_size);
         }
     }
-
+    if(sound_len) {
+        play_tones(sound_data, sound_len);
+        sound_len = 0;
+    }
 }
 
 void loop()

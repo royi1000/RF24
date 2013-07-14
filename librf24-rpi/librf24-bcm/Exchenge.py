@@ -10,10 +10,22 @@ from exceptions import *
 def enum(**enums):
     return type('Enum', (), enums)
 
-COMMAND_TYPE = enum(device_init=0xf0, device_init_response=0xf1, sensor_data=0x10, screen_data=0x11)
+COMMAND_TYPE = enum(device_init=0xf0, device_init_response=0xf1, sensor_data=0x30, screen_data=0x31)
 DEVICE_TYPE = enum(screen=0x10, sensor=0x20)
-DATA_TYPE = enum(date=0x1, string=0x2, bitmap=0x3, color_string=0x4, remove_id=0x10, end_tx=0x20)
+DATA_TYPE = enum(date=0x1, string=0x2, bitmap=0x3, color_string=0x4, sound=0x5, remove_id=0x10, end_tx=0x20)
 COLOR_TYPE = enum(c_red=1, c_green=2, c_blue=3,c_purple=4,c_yellow=5,c_aqua=6)
+
+TONE_TYPE = enum (c_note_b0=0, c_note_c1=1, c_note_cs1=2, c_note_d1=3, c_note_ds1=4, c_note_e1=5, c_note_f1=6, c_note_fs1=7, c_note_g1=8,
+c_note_gs1=9, c_note_a1=10, c_note_as1=11, c_note_b1=12, c_note_c2=13, c_note_cs2=14, c_note_d2=15, c_note_ds2=16, c_note_e2=17,
+c_note_f2=18, c_note_fs2=19, c_note_g2=20, c_note_gs2=21, c_note_a2=22, c_note_as2=23, c_note_b2=24, c_note_c3=25, c_note_cs3=26,
+c_note_d3=27, c_note_ds3=28, c_note_e3=29, c_note_f3=30, c_note_fs3=31, c_note_g3=32, c_note_gs3=33, c_note_a3=34, c_note_as3=35,
+c_note_b3=36, c_note_c4=37, c_note_cs4=38, c_note_d4=39, c_note_ds4=40, c_note_e4=41, c_note_f4=42, c_note_fs4=43, c_note_g4=44,
+c_note_gs4=45, c_note_a4=46, c_note_as4=47, c_note_b4=48, c_note_c5=49, c_note_cs5=50, c_note_d5=51, c_note_ds5=52, c_note_e5=53,
+c_note_f5=54, c_note_fs5=55, c_note_g5=56, c_note_gs5=57, c_note_a5=58, c_note_as5=59, c_note_b5=60, c_note_c6=61, c_note_cs6=62,
+c_note_d6=63, c_note_ds6=64, c_note_e6=65, c_note_f6=66, c_note_fs6=67, c_note_g6=68, c_note_gs6=69, c_note_a6=70, c_note_as6=71,
+c_note_b6=72, c_note_c7=73, c_note_cs7=74, c_note_d7=75, c_note_ds7=76, c_note_e7=77, c_note_f7=78, c_note_fs7=79, c_note_g7=80,
+c_note_gs7=81, c_note_a7=82, c_note_as7=83, c_note_b7=84, c_note_c8=85, c_note_cs8=86, c_note_d8=87, c_note_ds8=88)
+
 
 colors = {'red':(200,0,0),
           'green':(0,200,0),
@@ -81,6 +93,17 @@ class LongTest(App):
         
     def get_data(self,_id):
         return  chr(DATA_TYPE.color_string) + chr(_id) +  set_rgb(*(colors['purple'] + colors['aqua'])) +  'long test ' * 4
+
+class LongTest(App):
+    APP_NAME='soundtest'
+    play=True
+    def valid(self):
+        if self.play:
+            self.play = False
+        return True
+        
+    def get_data(self,_id):
+        return  chr(DATA_TYPE.sound) + [chr(i) for i in [TONE_TYPE.c_note_c4, TONE_TYPE.c_note_d4, TONE_TYPE.c_note_e4, TONE_TYPE.c_note_f4, TONE_TYPE.c_note_g4 ]]
 
 class Gmail(App):
     APP_NAME='gmail'
