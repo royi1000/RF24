@@ -9,30 +9,27 @@
 #include "lcd.h"
 #include "sound.h"
 #include "DHT.h"
-
-DHT dht;
+#include "rf_io.h"
 
 #define DHT22_PIN 2
 #define PAYLOAD_SIZE 20
-#define COMMAND_INIT 0xF0
-#define SENSOR_DATA 0x30
 #define SENSOR_RH_TEMP 0x50
-#define COMMAND_INIT_RESPONSE 0xF1
 #define DEVICE_TYPE 0x10
 #define MAX_STR_LEN (12*6)
 #define MAX_SCREENS 10
 #define SCREEN_TIME 4000 //time to view screen in milli
-#define UPDATE_INTERVAL 10000
-#define DEFAULT_COLOR c_blue
+#define UPDATE_INTERVAL 15000
 const uint16_t MAGIC_CODE = 0xDE12;
 // Set up nRF24L01 radio on SPI bus plus pins 9 & 10
 
 RF24 radio(9,10);
+DHT dht;
+
 
 // Radio pipe addresses for the 2 nodes to communicate.
 uint64_t pipes[2] = {0xF0F0F0F0D2LL,  0xF0F0F0F0E1LL};
 
-typedef enum {stand_alone=0, first_packet=1, continued_packet=2, last_packet=3} packet_type_e;
+typedef enum{command_init=0xF0, command_init_response=0xF1, sensor_data=0x30} command_type_e;
 typedef enum{date=0x1, string=0x2, bitmap=0x3, color_string=0x4, sound=0x5, remove_id=0x10, end_tx=0x20} data_type_e;
 typedef enum{c_red=1, c_green=2, c_blue=3, c_purple=4, c_yellow=5, c_aqua=6} color_type_e;
 
@@ -52,7 +49,6 @@ uint8_t screens_size[MAX_SCREENS];
 led_t screens_color[MAX_SCREENS];
 uint8_t sound_data[100];
 unsigned int data_len = 0;
-unsigned int current_ptr = 0;
 unsigned int last_screen_id = 0;
 unsigned long last_screen_time = 0;
 unsigned long last_update_time = 0;
@@ -78,8 +74,6 @@ typedef struct temp_rh_sensor {
     float       rh;
     float       temp;
 } temp_rh_sensor_message_t;
-
-
 
 typedef struct date_cmd {
     uint16_t year;
@@ -108,7 +102,6 @@ void color_out(){
                 screens_color[last_screen_id-1].green1,
                 screens_color[last_screen_id-1].blue1,
                 5);
-
 }
 
 void digitalClockDisplay(){
@@ -132,11 +125,10 @@ bool is_timeouted(unsigned long last, unsigned long timeout_interval /*millis*/)
     return true;
 }
 
-
 bool handle_message() {
   bool ret = false;
     uint8_t cmd = data[0];
-    if(cmd==COMMAND_INIT_RESPONSE) {
+    if(cmd==command_init_response) {
         if(config_settings.magic_code != MAGIC_CODE) {
             config_settings.magic_code = MAGIC_CODE;
             eeprom_write_block((const void*)&config_settings, (void*)0, sizeof(config_settings));
@@ -152,7 +144,6 @@ bool handle_message() {
         if ((id>10) || ((data_len - 2) > MAX_STR_LEN)) {
             //support only 10 id's
             data_len = 0;
-            current_ptr = 0;
             return false;
         }
         memcpy(screens[id-1], data+2, data_len-2);
@@ -169,7 +160,6 @@ bool handle_message() {
         if ((id>10) || ((data_len - 3) > MAX_STR_LEN)) {
             //support only 10 id's
             data_len = 0;
-            current_ptr = 0;
             return false;
         }
         memcpy(screens[id-1], data+2+sizeof(led_t), data_len-2-sizeof(led_t));
@@ -188,99 +178,26 @@ bool handle_message() {
         ret = true;
     }
     data_len = 0;
-    current_ptr = 0;
     return ret;
 }
-
-bool handle_read(uint8_t* buf, unsigned int len){
-  bool ret = false;
-    uint8_t msg_type = buf[0] >> 6;
-    uint8_t msg_len = buf[0] & 63;
-    if(stand_alone==msg_type){
-        memcpy(data, buf+1, msg_len-1);
-        data_len = msg_len-1;
-        ret = handle_message();
-        data_len = 0;
-        current_ptr = 0;
-        return ret;
-    }
-    else if(first_packet==msg_type) {
-        data_len = *((uint16_t*)(buf+1));
-        memcpy(data, buf+3, msg_len-3);
-        current_ptr = msg_len-3;
-        //printf("got first message, total len: %d\n", data_len);
-        return false;
-    }
-    else if(continued_packet==msg_type) {
-        if(!current_ptr) {
-            //printf("got invalid continued message\n");
-        }
-        memcpy(data+current_ptr, buf+1, msg_len-1);
-        current_ptr += msg_len-1;
-        if(current_ptr > data_len) {
-            // printf("invalid continued message, ptr overflow\n");
-        }
-        return false;
-    }
-    else if(last_packet==msg_type) {
-        if(!current_ptr) {
-            //printf("got invalid last message\n");
-            return false;
-        }
-        memcpy(data+current_ptr, buf+1, msg_len-1);
-        current_ptr += msg_len-1;
-        if(current_ptr != data_len) {
-            //printf("invalid ptr: %d, data len: %d\n", current_ptr, data_len);
-            return false;
-        }
-        ret = handle_message();
-        data_len = 0;
-        current_ptr = 0;
-    }
-    return ret;
-}
-
-void handle_write(void* buf, unsigned int len){
-    uint8_t tx_buf[32];
-    if(len<radio.getPayloadSize()) {
-        tx_buf[0] = (stand_alone << 6) | (len+1);
-        memcpy(tx_buf+1, buf, len);
-        //printf("sending message, length: %d content:\n", len);
-        for(int i=0;i<len+1;i++) {
-            //printf("0x%X ", tx_buf[i]);
-        }
-        //printf("\n");
-        radio.stopListening();
-        int success = radio.write(tx_buf, len+1);
-        radio.startListening();
-        if(success) {
-            // printf("send single packet succeded\n");
-        }
-        else{
-            //printf("send single packet failed\n");
-        }
-        return;
-    }
-}
-
 
 void send_init_packet() {
     cmd_message_t message;
-    message.command = COMMAND_INIT;
+    message.command = command_init;
     message.dev_type = DEVICE_TYPE;
     message.addr = config_settings.rx_addr;
    float humidity = dht.getHumidity();
    float temperature = dht.getTemperature();
    temp_rh_sensor_message_t sensor_message;
-   sensor_message.command = SENSOR_DATA;
+   sensor_message.command = sensor_data;
    sensor_message.sensor_type = SENSOR_RH_TEMP;
    sensor_message.addr = config_settings.rx_addr;
    sensor_message.rh = humidity;
    sensor_message.temp = temperature;
     radio.stopListening();
-    handle_write((void *)&sensor_message, sizeof(sensor_message));
+    handle_write(&radio, (void *)&sensor_message, sizeof(sensor_message));
     delay(100);
-    handle_write((void *)&message, sizeof(message));
+    handle_write(&radio, (void *)&message, sizeof(message));
     radio.startListening();
 }
 
@@ -319,7 +236,7 @@ void setup()
     radio.openReadingPipe(1, config_settings.rx_addr);
 
     radio.startListening();
-    radio.printDetails();
+    //radio.printDetails();
 }
 
 void next_screen()
@@ -363,23 +280,23 @@ void get_data_from_master()
         else if(radio.available()){
             uint8_t payload_size = radio.getPayloadSize();
             radio.read(radio_buf, payload_size);
-            end_transmission = handle_read(radio_buf, payload_size);
+            if(handle_read(&radio, radio_buf,  payload_size, data, &data_len)){
+              end_transmission = handle_message();
+            }
             start_wait_time = millis();
         }
     }
     last_update_time = millis();
     if(sound_len) {
-    for (unsigned int thisNote = 0; thisNote < sound_len; thisNote++) {
-    }
-        play_tones(sound_data, sound_len);
-        sound_len = 0;
+      play_tones(sound_data, sound_len);
+      sound_len = 0;
     }
 }
 
 void loop()
 {
  // READ DATA
-  get_data_from_master();
+    get_data_from_master();
     color_out();
     next_screen();
 }
