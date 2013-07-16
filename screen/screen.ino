@@ -58,7 +58,6 @@ unsigned long last_screen_time = 0;
 unsigned long last_update_time = 0;
 unsigned int sound_len = 0;
 uint8_t current_color = c_blue;
-bool end_transmission = false;
 
 typedef struct store {
     uint16_t magic_code;
@@ -128,13 +127,14 @@ void digitalClockDisplay(){
 
 bool is_timeouted(unsigned long last, unsigned long timeout_interval /*millis*/)
 {
-    if (((millis() - last) < timeout_interval && (last < millis())))
+    if (((millis() - last) < timeout_interval)&& (last < millis()))
         return false;
     return true;
 }
 
 
-void handle_message() {
+bool handle_message() {
+  bool ret = false;
     uint8_t cmd = data[0];
     if(cmd==COMMAND_INIT_RESPONSE) {
         if(config_settings.magic_code != MAGIC_CODE) {
@@ -153,7 +153,7 @@ void handle_message() {
             //support only 10 id's
             data_len = 0;
             current_ptr = 0;
-            return;
+            return false;
         }
         memcpy(screens[id-1], data+2, data_len-2);
         screens_size[id-1] = data_len - 2;
@@ -170,7 +170,7 @@ void handle_message() {
             //support only 10 id's
             data_len = 0;
             current_ptr = 0;
-            return;
+            return false;
         }
         memcpy(screens[id-1], data+2+sizeof(led_t), data_len-2-sizeof(led_t));
         screens_size[id-1] = data_len - 3;
@@ -184,29 +184,32 @@ void handle_message() {
         }
     }
     else if (cmd==end_tx) {
-        end_transmission = true;
+      green(100);
+        ret = true;
     }
     data_len = 0;
     current_ptr = 0;
+    return ret;
 }
 
-void handle_read(uint8_t* buf, unsigned int len){
+bool handle_read(uint8_t* buf, unsigned int len){
+  bool ret = false;
     uint8_t msg_type = buf[0] >> 6;
     uint8_t msg_len = buf[0] & 63;
     if(stand_alone==msg_type){
         memcpy(data, buf+1, msg_len-1);
         data_len = msg_len-1;
-        handle_message();
+        ret = handle_message();
         data_len = 0;
         current_ptr = 0;
-        return;
+        return ret;
     }
     else if(first_packet==msg_type) {
         data_len = *((uint16_t*)(buf+1));
         memcpy(data, buf+3, msg_len-3);
         current_ptr = msg_len-3;
         //printf("got first message, total len: %d\n", data_len);
-        return;
+        return false;
     }
     else if(continued_packet==msg_type) {
         if(!current_ptr) {
@@ -217,23 +220,24 @@ void handle_read(uint8_t* buf, unsigned int len){
         if(current_ptr > data_len) {
             // printf("invalid continued message, ptr overflow\n");
         }
-        return;
+        return false;
     }
     else if(last_packet==msg_type) {
         if(!current_ptr) {
             //printf("got invalid last message\n");
-            return;
+            return false;
         }
         memcpy(data+current_ptr, buf+1, msg_len-1);
         current_ptr += msg_len-1;
         if(current_ptr != data_len) {
             //printf("invalid ptr: %d, data len: %d\n", current_ptr, data_len);
-            return;
+            return false;
         }
-        handle_message();
+        ret = handle_message();
         data_len = 0;
         current_ptr = 0;
     }
+    return ret;
 }
 
 void handle_write(void* buf, unsigned int len){
@@ -275,7 +279,7 @@ void send_init_packet() {
    sensor_message.temp = temperature;
     radio.stopListening();
     handle_write((void *)&sensor_message, sizeof(sensor_message));
-    delay(50);
+    delay(100);
     handle_write((void *)&message, sizeof(message));
     radio.startListening();
 }
@@ -346,20 +350,24 @@ void get_data_from_master()
     {
         return;
     }
-    last_update_time = millis();
+    yellow(100);
     send_init_packet();
+    unsigned long start_wait_time = millis();
     bool timeout = false;
-    end_transmission = false;
+    bool end_transmission = false;
     while(!timeout && !end_transmission) {
-        if (is_timeouted(last_update_time, 1000)) {
+        if ((millis() - start_wait_time > 1000) && (millis() > start_wait_time)) {
+          red(1000);
             timeout = true;
         }
         else if(radio.available()){
             uint8_t payload_size = radio.getPayloadSize();
             radio.read(radio_buf, payload_size);
-            handle_read(radio_buf, payload_size);
+            end_transmission = handle_read(radio_buf, payload_size);
+            start_wait_time = millis();
         }
     }
+    last_update_time = millis();
     if(sound_len) {
     for (unsigned int thisNote = 0; thisNote < sound_len; thisNote++) {
     }
