@@ -15,6 +15,8 @@ DHT dht;
 #define DHT22_PIN 2
 #define PAYLOAD_SIZE 20
 #define COMMAND_INIT 0xF0
+#define SENSOR_DATA 0x30
+#define SENSOR_RH_TEMP 0x50
 #define COMMAND_INIT_RESPONSE 0xF1
 #define DEVICE_TYPE 0x10
 #define MAX_STR_LEN (12*6)
@@ -69,6 +71,16 @@ typedef struct cmd_message {
     uint8_t dev_type;
     uint64_t addr;
 } cmd_message_t;
+
+typedef struct temp_rh_sensor {
+    uint8_t    command;
+    uint8_t   sensor_type;
+    uint64_t addr;
+    float       rh;
+    float       temp;
+} temp_rh_sensor_message_t;
+
+
 
 typedef struct date_cmd {
     uint16_t year;
@@ -253,7 +265,17 @@ void send_init_packet() {
     message.command = COMMAND_INIT;
     message.dev_type = DEVICE_TYPE;
     message.addr = config_settings.rx_addr;
+   float humidity = dht.getHumidity();
+   float temperature = dht.getTemperature();
+   temp_rh_sensor_message_t sensor_message;
+   sensor_message.command = SENSOR_DATA;
+   sensor_message.sensor_type = SENSOR_RH_TEMP;
+   sensor_message.addr = config_settings.rx_addr;
+   sensor_message.rh = humidity;
+   sensor_message.temp = temperature;
     radio.stopListening();
+    handle_write((void *)&sensor_message, sizeof(sensor_message));
+    delay(50);
     handle_write((void *)&message, sizeof(message));
     radio.startListening();
 }
@@ -270,7 +292,7 @@ void setup()
     digitalWrite(A1, HIGH);
     LcdInitialise();
     LcdClear();
-    dht.setup(2); // data pin 2
+    dht.setup(DHT22_PIN  ); // data pin 2
   //printf_begin();
     //printf("\n\rNokia screen receiver\n\r");
     randomSeed(analogRead(0));
@@ -349,8 +371,6 @@ void get_data_from_master()
 void loop()
 {
  // READ DATA
-  float humidity = dht.getHumidity();
-  float temperature = dht.getTemperature();
   get_data_from_master();
     color_out();
     next_screen();
