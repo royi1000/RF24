@@ -78,7 +78,7 @@ class RF24_Wrapper(object):
                 print "radio available, pipe:{}".format(pipe)
                 last_size = self.radio.getPayloadSize()
                 ok = self.radio.read(self._buffer.ptr, last_size)
-                if not ok:
+                if not ok:                    
                     raise IOError
                 buf = self._buffer.read(last_size)
                 ctrl_byte = ord(buf[0])

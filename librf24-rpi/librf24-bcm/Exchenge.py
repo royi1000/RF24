@@ -14,6 +14,8 @@ COMMAND_TYPE = enum(device_init=0xf0, device_init_response=0xf1, sensor_data=0x3
 DEVICE_TYPE = enum(screen=0x10, sensor=0x20)
 DATA_TYPE = enum(date=0x1, string=0x2, bitmap=0x3, color_string=0x4, sound=0x5, remove_id=0x10, end_tx=0x20)
 COLOR_TYPE = enum(c_red=1, c_green=2, c_blue=3,c_purple=4,c_yellow=5,c_aqua=6)
+SENSOR_TYPE = enum(rh_temp=0x50)
+
 
 TONE_TYPE = enum (c_note_b0=0, c_note_c1=1, c_note_cs1=2, c_note_d1=3, c_note_ds1=4, c_note_e1=5, c_note_f1=6, c_note_fs1=7, c_note_g1=8,
 c_note_gs1=9, c_note_a1=10, c_note_as1=11, c_note_b1=12, c_note_c2=13, c_note_cs2=14, c_note_d2=15, c_note_ds2=16, c_note_e2=17,
@@ -94,7 +96,7 @@ class LongTest(App):
     def get_data(self,_id):
         return  chr(DATA_TYPE.color_string) + chr(_id) +  set_rgb(*(colors['purple'] + colors['aqua'])) +  'long test ' * 4
 
-class LongTest(App):
+class SoundTest(App):
     APP_NAME='soundtest'
     play=True
     def valid(self):
@@ -103,7 +105,7 @@ class LongTest(App):
         return True
         
     def get_data(self,_id):
-        return  chr(DATA_TYPE.sound) + [chr(i) for i in [TONE_TYPE.c_note_c4, TONE_TYPE.c_note_d4, TONE_TYPE.c_note_e4, TONE_TYPE.c_note_f4, TONE_TYPE.c_note_g4 ]]
+        return  chr(DATA_TYPE.sound) + "".join([chr(i) for i in [TONE_TYPE.c_note_c8, TONE_TYPE.c_note_d8, TONE_TYPE.c_note_e4, TONE_TYPE.c_note_f4, TONE_TYPE.c_note_g4 ]])*10
 
 class Gmail(App):
     APP_NAME='gmail'
@@ -137,26 +139,56 @@ class Gmail(App):
         return int(count_obj.firstChild.wholeText)
 
 class Sensor(object):
-    REP_STR = "Sensor data: {}"
-    def __init__(self, _id):
+    def __init__(self, _id, name, interval = 600):
+        self.interval = interval
         self._id = _id
-        self.last_data = ''
+        self.last_data = ()
         self.last_time = 0
         self.new_data = False
+        self.name = name
 
     def update(self, data):
         self.last_data = data
         self.last_time = seconds()
         self.new_data = True
 
-    def get_data(self):
-        REP_STR.format(*self.last_data)
+    def get_data(self,_id):
+        raise NotImplementedError
 
     def is_new_data(self):
         if self.new_data:
             self.new_data = False
             return True
         return False
+ 
+    def valid(self):
+        if (self.last_time + (self.interval*2)) < seconds():
+            return False
+        return True
+
+class RTSensor(Sensor):
+    def get_data(self, _id):
+        green1 = green2 = 0
+        if self.temp < 25:
+            green1 = 200
+            red = 0
+            blue = int(-5 * (self.temp - 40))
+        else:
+            green2 = 200
+            red = int(self.temp) * 5 
+            if red > 255: red = 255
+            blue = 0
+        name =''
+        if self.name:
+            name = self.name.ljust(12,' ')
+        return chr(DATA_TYPE.color_string) + chr(_id) + set_rgb(red,green1,0,0,green2,blue) + "{0:}RH:   {1:2.2f} TEMP: {2:2.2f}".format(name, self.rh, self.temp)
+
+    def update(self, data):
+        self.last_data = data
+        self.rh, self.temp = data
+        self.last_time = seconds()
+        self.new_data = True
+
 
 class RFExchange(object):
     def __init__(self, apps):
@@ -164,6 +196,7 @@ class RFExchange(object):
         self._rf = rf_prot.RF24_Wrapper()
         self._db = shelve.open('rf_exchange_db')
         self.apps = apps
+        self.sensors = dict()
         if not self._db.has_key('init'):
             self._db['init'] = True
             self._db['current_pipe'] = 0
@@ -172,8 +205,32 @@ class RFExchange(object):
             self._db['app_data'] = {}
             self._db['sensors'] = {}
 
+    def get_sensor_name(self, _id):
+        try:
+            f=open('sensor_names.py', 'r+').read()
+            x=eval(f)
+        except:
+            open('sensor_names.py', 'w')
+            x={}
+        if x.has_key(_id):
+            return x[_id]
+        x[_id] = ''
+        open('sensor_names.py', 'w').write(str(x))
+
     def handle_rx_data(self, data):
         cmd = struct.unpack('B', data[0])[0]
+        if cmd == COMMAND_TYPE.sensor_data:
+            addr = struct.unpack('Q', data[2:10])[0]
+            sensor_type = struct.unpack('B', data[1])[0]
+            _id = (addr, sensor_type)
+            if sensor_type == SENSOR_TYPE.rh_temp:
+                addr = struct.unpack('Q', data[2:10])[0]
+                rh, temp = struct.unpack('ff', data[10:18])
+                if not addr in self.sensors.keys():
+                    name = self.get_sensor_name(_id)
+                    self.sensors[_id] = RTSensor(_id, name)
+                self.sensors[_id].update((rh,temp))
+                print "rh: {} temp: {}".format(rh,temp)
         if cmd == COMMAND_TYPE.device_init:
             dev_type = struct.unpack('B', data[1])[0]
             addr = struct.unpack('Q', data[2:10])[0]
@@ -186,7 +243,7 @@ class RFExchange(object):
                     self._db['out_devices'] = x
                 data=chr(COMMAND_TYPE.device_init_response)+data[1:]
                 self._rf.write(addr, data[:10])
-                for _id, app in enumerate(self.apps):
+                for _id, app in enumerate(self.apps + self.sensors.values()):
                     if app.valid():
                         data = app.get_data(_id)
                         print repr(data)
@@ -194,6 +251,7 @@ class RFExchange(object):
                     else:
                         data = chr(DATA_TYPE.remove_id) + chr(_id)
                         self._rf.write(addr, data)
+                        sleep(0.01)
                 self.send_end_tx_msg(addr)
 
     def send_end_tx_msg(self, addr):
@@ -203,6 +261,7 @@ class RFExchange(object):
     def run(self):
         try:
             while True:
+                changed = []
                 for _id, app in enumerate(self.apps):
                     if app.should_run():
                         app.update_data(_id)
@@ -217,4 +276,4 @@ class RFExchange(object):
             self._db.close()
 
 
-RFExchange([DT(),LongTest(),ShortTest(),Gmail()]).run()
+RFExchange([DT(),LongTest(),ShortTest(),Gmail(),SoundTest()]).run()
