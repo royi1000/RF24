@@ -14,8 +14,7 @@ COMMAND_TYPE = enum(device_init=0xf0, device_init_response=0xf1, sensor_data=0x3
 DEVICE_TYPE = enum(screen=0x10, sensor=0x20)
 DATA_TYPE = enum(date=0x1, string=0x2, bitmap=0x3, color_string=0x4, sound=0x5, remove_id=0x10, end_tx=0x20)
 COLOR_TYPE = enum(c_red=1, c_green=2, c_blue=3,c_purple=4,c_yellow=5,c_aqua=6)
-SENSOR_TYPE = enum(rh_temp=0x50, light=0x51)
-
+SENSOR_TYPE = enum(rh_temp=0x50, light=0x51, presure=0x52, moisture=0x53)
 
 TONE_TYPE = enum (c_note_b0=0, c_note_c1=1, c_note_cs1=2, c_note_d1=3, c_note_ds1=4, c_note_e1=5, c_note_f1=6, c_note_fs1=7, c_note_g1=8,
 c_note_gs1=9, c_note_a1=10, c_note_as1=11, c_note_b1=12, c_note_c2=13, c_note_cs2=14, c_note_d2=15, c_note_ds2=16, c_note_e2=17,
@@ -196,8 +195,24 @@ class LightSensor(Sensor):
             name = self.name.ljust(12,' ')
         return chr(DATA_TYPE.string) + chr(_id) +  "{0:}LUX:   {1:2.2f} ".format(name, self.last_data)
  
+class MoistureSensor(Sensor):
+    def get_data(self, _id):
+        name =''
+        if self.name:
+            name = self.name.ljust(12,' ')
+        pre_str = chr(DATA_TYPE.string) + chr(_id)
+        if self.last_data < 300:
+            pre_str = chr(DATA_TYPE.color_string) + chr(_id) + set_rgb(255,0,0,0,0,0)
+        return pre_str +  "{0:}soil RH: {1:} ".format(name, self.last_data)
 
-
+class PresureSensor(Sensor):
+    def get_data(self, _id):
+        temp, presure = self.last_data
+        name =''
+        if self.name:
+            name = self.name.ljust(12,' ')
+        return chr(DATA_TYPE.string) + chr(_id) +  name + "Pha: {0:2.2f} ".format(presure).ljust(12,' ') + "Temp: {0:2.2f} ".format(temp)
+            
 class RFExchange(object):
     def __init__(self, apps):
         #rx_addrs = [0xF0F0F0F01F, 0xF0F0F0F02F, 0xF0F0F0F03F, 0xF0F0F0F04F, 0xF0F0F0F05F]
@@ -231,7 +246,6 @@ class RFExchange(object):
             addr = struct.unpack('Q', data[2:10])[0]
             sensor_type = struct.unpack('B', data[1])[0]
             _id = (addr, sensor_type)
-            addr = struct.unpack('Q', data[2:10])[0]
             if sensor_type == SENSOR_TYPE.rh_temp:
                 rh, temp = struct.unpack('ff', data[10:18])
                 if not addr in self.sensors.keys():
@@ -246,7 +260,20 @@ class RFExchange(object):
                     self.sensors[_id] = LightSensor(_id, name)
                 self.sensors[_id].update(lux)
                 print "light lux: {}".format(lux)
-
+            if sensor_type == SENSOR_TYPE.moisture:
+                rh = struct.unpack('H', data[10:12])[0]
+                if not addr in self.sensors.keys():
+                    name = self.get_sensor_name(_id)
+                    self.sensors[_id] = MoistureSensor(_id, name)
+                self.sensors[_id].update(rh)
+                print "soli moisture: {}".format(rh)
+            if sensor_type == SENSOR_TYPE.presure:
+                temp,presure = struct.unpack('LL', data[10:18])
+                if not addr in self.sensors.keys():
+                    name = self.get_sensor_name(_id)
+                    self.sensors[_id] = PresureSensor(_id, name)
+                self.sensors[_id].update((temp,presure))
+                print "presure: {} temp: {}".format(presure, temp)
 
         if cmd == COMMAND_TYPE.device_init:
             dev_type = struct.unpack('B', data[1])[0]
@@ -278,7 +305,6 @@ class RFExchange(object):
                 data=chr(COMMAND_TYPE.device_init_response)+data[1:]
                 self._rf.write(addr, data[:10])
  
-
     def send_end_tx_msg(self, addr):
         data = chr(DATA_TYPE.end_tx)
         self._rf.write(addr, data)
