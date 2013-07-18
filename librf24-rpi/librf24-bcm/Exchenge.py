@@ -14,7 +14,7 @@ COMMAND_TYPE = enum(device_init=0xf0, device_init_response=0xf1, sensor_data=0x3
 DEVICE_TYPE = enum(screen=0x10, sensor=0x20)
 DATA_TYPE = enum(date=0x1, string=0x2, bitmap=0x3, color_string=0x4, sound=0x5, remove_id=0x10, end_tx=0x20)
 COLOR_TYPE = enum(c_red=1, c_green=2, c_blue=3,c_purple=4,c_yellow=5,c_aqua=6)
-SENSOR_TYPE = enum(rh_temp=0x50)
+SENSOR_TYPE = enum(rh_temp=0x50, light=0x51)
 
 
 TONE_TYPE = enum (c_note_b0=0, c_note_c1=1, c_note_cs1=2, c_note_d1=3, c_note_ds1=4, c_note_e1=5, c_note_f1=6, c_note_fs1=7, c_note_g1=8,
@@ -105,7 +105,7 @@ class SoundTest(App):
         return True
         
     def get_data(self,_id):
-        return  chr(DATA_TYPE.sound) + "".join([chr(i) for i in [TONE_TYPE.c_note_c8, TONE_TYPE.c_note_d8, TONE_TYPE.c_note_e4, TONE_TYPE.c_note_f4, TONE_TYPE.c_note_g4 ]])*10
+        return  chr(DATA_TYPE.sound) + "".join([chr(i) for i in [TONE_TYPE.c_note_c8, TONE_TYPE.c_note_d8, TONE_TYPE.c_note_e4, TONE_TYPE.c_note_f4, TONE_TYPE.c_note_g4 ]])
 
 class Gmail(App):
     APP_NAME='gmail'
@@ -117,7 +117,7 @@ class Gmail(App):
 
     def get_data(self,_id):
         if self.count:
-            return chr(DATA_TYPE.color_string) + chr(_id) +  set_rgb(*(colors['blue'] + colors['green'])) +  'Gmail unread{}'.format(self.count)
+            return chr(DATA_TYPE.color_string) + chr(_id) +  set_rgb(*(colors['blue'] + colors['green'])) +  'Gmail '.ljust(12,' ') + 'unread:{}'.format(self.count)
         return ''
             
     def valid(self):
@@ -189,6 +189,14 @@ class RTSensor(Sensor):
         self.last_time = seconds()
         self.new_data = True
 
+class LightSensor(Sensor):
+    def get_data(self, _id):
+        name =''
+        if self.name:
+            name = self.name.ljust(12,' ')
+        return chr(DATA_TYPE.string) + chr(_id) +  "{0:}LUX:   {1:2.2f} ".format(name, self.last_data)
+ 
+
 
 class RFExchange(object):
     def __init__(self, apps):
@@ -223,14 +231,23 @@ class RFExchange(object):
             addr = struct.unpack('Q', data[2:10])[0]
             sensor_type = struct.unpack('B', data[1])[0]
             _id = (addr, sensor_type)
+            addr = struct.unpack('Q', data[2:10])[0]
             if sensor_type == SENSOR_TYPE.rh_temp:
-                addr = struct.unpack('Q', data[2:10])[0]
                 rh, temp = struct.unpack('ff', data[10:18])
                 if not addr in self.sensors.keys():
                     name = self.get_sensor_name(_id)
                     self.sensors[_id] = RTSensor(_id, name)
                 self.sensors[_id].update((rh,temp))
                 print "rh: {} temp: {}".format(rh,temp)
+            if sensor_type == SENSOR_TYPE.light:
+                lux = struct.unpack('H', data[10:12])[0]
+                if not addr in self.sensors.keys():
+                    name = self.get_sensor_name(_id)
+                    self.sensors[_id] = LightSensor(_id, name)
+                self.sensors[_id].update(lux)
+                print "light lux: {}".format(lux)
+
+
         if cmd == COMMAND_TYPE.device_init:
             dev_type = struct.unpack('B', data[1])[0]
             addr = struct.unpack('Q', data[2:10])[0]
@@ -251,8 +268,16 @@ class RFExchange(object):
                     else:
                         data = chr(DATA_TYPE.remove_id) + chr(_id)
                         self._rf.write(addr, data)
-                        sleep(0.01)
                 self.send_end_tx_msg(addr)
+            elif dev_type==DEVICE_TYPE.sensor:
+                if not addr in self._db['in_devices']:
+                    print repr(addr)
+                    x=self._db['in_devices']
+                    x.append(addr)
+                    self._db['in_devices'] = x
+                data=chr(COMMAND_TYPE.device_init_response)+data[1:]
+                self._rf.write(addr, data[:10])
+ 
 
     def send_end_tx_msg(self, addr):
         data = chr(DATA_TYPE.end_tx)
@@ -268,9 +293,12 @@ class RFExchange(object):
                 for _id, sensor in self._db['sensors'].items():
                     if sensor.is_new_data:
                         changed.append(_id)
-                (pipe, data) = self._rf.read(5000)
-                if data:
-                    self.handle_rx_data(data)
+                start_time = seconds()
+                while seconds()-start_time < 5:
+                    (pipe, data) = self._rf.read(1000)
+                    if data:
+                        start_time = seconds()
+                        self.handle_rx_data(data)
                 
         finally:
             self._db.close()

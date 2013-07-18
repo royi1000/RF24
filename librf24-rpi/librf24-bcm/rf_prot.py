@@ -77,9 +77,7 @@ class RF24_Wrapper(object):
                 pipe = struct.unpack('B',self._pipe_num.read(1))[0]
                 print "radio available, pipe:{}".format(pipe)
                 last_size = self.radio.getPayloadSize()
-                ok = self.radio.read(self._buffer.ptr, last_size)
-                if not ok:                    
-                    raise IOError
+                self.radio.read(self._buffer.ptr, last_size)
                 buf = self._buffer.read(last_size)
                 ctrl_byte = ord(buf[0])
                 packet_type = ctrl_byte >> 6
