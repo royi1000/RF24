@@ -44,7 +44,7 @@ def seconds(): return int(round(time.time()))
 
 class App(object):
     APP_NAME = 'undef'
-    def __init__(self, interval=6):
+    def __init__(self, interval=60):
         self.last_time = 0
         self.interval = interval
         self.last_data = ''
@@ -85,7 +85,7 @@ class ShortTest(App):
         return True
     
     def get_data(self, _id):
-        return chr(DATA_TYPE.color_string) + chr(_id) + set_rgb(*(colors['red'] + colors['orange'])) +  'short test'
+        return chr(DATA_TYPE.color_string) + chr(_id) + set_rgb(*(colors['red'] + colors['orange'])) +  ''.join([chr(i+220) for i in range(34)])
     
 class LongTest(App):
     APP_NAME='longtest'
@@ -110,13 +110,15 @@ class Gmail(App):
     APP_NAME='gmail'
     def update_data(self, _id):
         user,passwd = open('gmail.txt').readline().split(',')
-        self.count = self.get_unread_msgs(user,passwd)
-        self.last_time = seconds()
-
+        try:
+            self.count = self.get_unread_msgs(user,passwd)
+            self.last_time = seconds()
+        except:
+            print "get gmail count failed"
 
     def get_data(self,_id):
         if self.count:
-            return chr(DATA_TYPE.color_string) + chr(_id) +  set_rgb(*(colors['blue'] + colors['green'])) +  'Gmail '.ljust(12,' ') + 'unread:{}'.format(self.count)
+            return chr(DATA_TYPE.color_string) + chr(_id) +  set_rgb(*(colors['purple'] + colors['green'])) +  'Gmail '.ljust(12,' ') + 'unread:{}'.format(self.count)
         return ''
             
     def valid(self):
@@ -167,16 +169,19 @@ class Sensor(object):
 
 class RTSensor(Sensor):
     def get_data(self, _id):
-        green1 = green2 = 0
-        if self.temp < 25:
-            green1 = 200
-            red = 0
-            blue = int(-5 * (self.temp - 40))
-        else:
-            green2 = 200
-            red = int(self.temp) * 5 
-            if red > 255: red = 255
-            blue = 0
+        red = blue = green1 = green2 = 0
+        try:
+            if self.temp < 25:
+                green1 = 200
+                red = 0
+                blue = int(-5 * (self.temp - 40))
+            else:
+                green2 = 200
+                red = int(self.temp) * 5 
+                if red > 255: red = 255
+                blue = 0
+        except:
+            pass
         name =''
         if self.name:
             name = self.name.ljust(12,' ')
@@ -193,7 +198,7 @@ class LightSensor(Sensor):
         name =''
         if self.name:
             name = self.name.ljust(12,' ')
-        return chr(DATA_TYPE.string) + chr(_id) +  "{0:}LUX:   {1:2.2f} ".format(name, self.last_data)
+        return chr(DATA_TYPE.string) + chr(_id) +  "{0:}LUX: {1:2.2f} ".format(name, self.last_data)
  
 class MoistureSensor(Sensor):
     def get_data(self, _id):
@@ -203,7 +208,7 @@ class MoistureSensor(Sensor):
         pre_str = chr(DATA_TYPE.string) + chr(_id)
         if self.last_data < 300:
             pre_str = chr(DATA_TYPE.color_string) + chr(_id) + set_rgb(255,0,0,0,0,0)
-        return pre_str +  "{0:}soil RH: {1:} ".format(name, self.last_data)
+        return pre_str +  "{0:}Soil RH:{1:} ".format(name, self.last_data)
 
 class PresureSensor(Sensor):
     def get_data(self, _id):
@@ -211,7 +216,7 @@ class PresureSensor(Sensor):
         name =''
         if self.name:
             name = self.name.ljust(12,' ')
-        return chr(DATA_TYPE.string) + chr(_id) +  name + "Pha: {0:2.2f} ".format(presure).ljust(12,' ') + "Temp: {0:2.2f} ".format(temp)
+        return chr(DATA_TYPE.string) + chr(_id) +  name + "Pha: {0:2.2f}".format(presure).ljust(12,' ') + "Temp:  {0:2.2f} ".format(temp)
             
 class RFExchange(object):
     def __init__(self, apps):
@@ -266,9 +271,9 @@ class RFExchange(object):
                     name = self.get_sensor_name(_id)
                     self.sensors[_id] = MoistureSensor(_id, name)
                 self.sensors[_id].update(rh)
-                print "soli moisture: {}".format(rh)
+                print "soil moisture: {}".format(rh)
             if sensor_type == SENSOR_TYPE.presure:
-                temp,presure = struct.unpack('LL', data[10:18])
+                temp,presure = struct.unpack('ff', data[10:18])
                 if not addr in self.sensors.keys():
                     name = self.get_sensor_name(_id)
                     self.sensors[_id] = PresureSensor(_id, name)
@@ -276,6 +281,7 @@ class RFExchange(object):
                 print "presure: {} temp: {}".format(presure, temp)
 
         if cmd == COMMAND_TYPE.device_init:
+            time.sleep(0.05)
             dev_type = struct.unpack('B', data[1])[0]
             addr = struct.unpack('Q', data[2:10])[0]
             print "got device init cmd: {}, dev type: {}, addr: {}".format(hex(cmd), hex(dev_type), hex(addr))
@@ -320,14 +326,15 @@ class RFExchange(object):
                     if sensor.is_new_data:
                         changed.append(_id)
                 start_time = seconds()
-                while seconds()-start_time < 5:
-                    (pipe, data) = self._rf.read(1000)
+                data = '1'
+                while data:
+                    (pipe, data) = self._rf.read(3000)
                     if data:
-                        start_time = seconds()
                         self.handle_rx_data(data)
+                        start_time = seconds()
                 
         finally:
             self._db.close()
 
 
-RFExchange([DT(),LongTest(),ShortTest(),Gmail(),SoundTest()]).run()
+RFExchange([DT(),Gmail(),ShortTest()]).run()

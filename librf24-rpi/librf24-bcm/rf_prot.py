@@ -75,7 +75,7 @@ class RF24_Wrapper(object):
         while millis()<start+timeout:
             if self.radio.available(self._pipe_num.ptr):
                 pipe = struct.unpack('B',self._pipe_num.read(1))[0]
-                print "radio available, pipe:{}".format(pipe)
+                #print "radio available, pipe:{}".format(pipe)
                 last_size = self.radio.getPayloadSize()
                 self.radio.read(self._buffer.ptr, last_size)
                 buf = self._buffer.read(last_size)
@@ -90,7 +90,7 @@ class RF24_Wrapper(object):
                         print "payload stream error on pipe: {}".format(pipe)
                     self._pipes_bufs[pipe] = [0, '']
                     print_debug('got stand alone packet, len: {}'.format(payload_len-1))
-                    return (pipe, buf[1:payload_len+1])
+                    return (pipe, buf[1:payload_len])
                         
                 elif packet_type == PACKET_TYPE.first_packet:
                     if self._pipes_bufs[pipe][0]:
