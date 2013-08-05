@@ -11,14 +11,33 @@
 #include "DHT.h"
 #include "rf_io.h"
 
+/*********   PINS     *******
+ *******    RF24    *********
+ CE-9
+ CSN-10
+ MOSI-11
+ MISO-12
+ SCK-13
+ ***** SCREEN   ********
+ Pin 2 (SCLK)	 Arduino digital pin 3
+Pin 3 (SDIN/MOSI)	 Arduino digital pin 4
+Pin 4 (D/C)	 Arduino digital pin 5
+Pin 5 (SCE)	 Arduino digital pin 7
+Pin 8 (RST)	 Arduino digital pin 6
+***************************/
+
 #define DHT22_PIN 2
 #define PAYLOAD_SIZE 20
 #define SENSOR_RH_TEMP 0x50
 #define DEVICE_TYPE 0x10
 #define MAX_STR_LEN (12*6)
-#define MAX_SCREENS 10
+#define MAX_SCREENS 5
+#define MAX_SENSOR_NAME 5
+#define MAX_SENSORS 10
+#define HISTORY_SIZE 24
+
 #define SCREEN_TIME 4000 //time to view screen in milli
-#define UPDATE_INTERVAL 15000
+#define UPDATE_INTERVAL 5000
 #define WD_TIMEOUT_INTERVAL (1 * 60 * 1000)
 const uint16_t MAGIC_CODE = 0xDE12;
 // Set up nRF24L01 radio on SPI bus plus pins 9 & 10
@@ -35,7 +54,7 @@ typedef enum{
   command_init=0xF0, command_init_response=0xF1, sensor_data=0x30} 
 command_type_e;
 typedef enum{
-  date=0x1, string=0x2, bitmap=0x3, color_string=0x4, sound=0x5, remove_id=0x10, end_tx=0x20} 
+  date=0x1, string=0x2, bitmap=0x3, color_string=0x4, sound=0x5, sensor=0x6, remove_id=0x10, end_tx=0x20} 
 data_type_e;
 typedef enum{
   c_red=1, c_green=2, c_blue=3, c_purple=4, c_yellow=5, c_aqua=6} 
@@ -51,11 +70,22 @@ typedef struct led_s{
 }
 led_t;
 
+typedef struct sensor_data_s {
+	uint8_t type;
+	uint8_t name[MAX_SENSOR_NAME];
+	uint8_t hist[HISTORY_SIZE];
+	float min;
+	float max;
+	float val;
+} sensor_data_t;
+
 uint8_t radio_buf[32];
 uint8_t data[100];
 uint8_t screens[MAX_SCREENS][MAX_STR_LEN+1];
 uint8_t screens_size[MAX_SCREENS];
 led_t screens_color[MAX_SCREENS];
+sensor_data_t sensors[MAX_SENSORS];
+
 uint8_t sound_data[100];
 unsigned int data_len = 0;
 unsigned int last_screen_id = 0;
@@ -99,21 +129,19 @@ date_cmd_t;
 store_t config_settings;
 
 void color_out(){
-  if(!last_screen_id)
-    return;
-  fade(screens_color[last_screen_id-1].red1,
-  screens_color[last_screen_id-1].green1,
-  screens_color[last_screen_id-1].blue1,
-  screens_color[last_screen_id-1].red2,
-  screens_color[last_screen_id-1].green2,
-  screens_color[last_screen_id-1].blue2,
+  fade(screens_color[last_screen_id].red1,
+  screens_color[last_screen_id].green1,
+  screens_color[last_screen_id].blue1,
+  screens_color[last_screen_id].red2,
+  screens_color[last_screen_id].green2,
+  screens_color[last_screen_id].blue2,
   5);
-  fade(screens_color[last_screen_id-1].red2,
-  screens_color[last_screen_id-1].green2,
-  screens_color[last_screen_id-1].blue2,
-  screens_color[last_screen_id-1].red1,
-  screens_color[last_screen_id-1].green1,
-  screens_color[last_screen_id-1].blue1,
+  fade(screens_color[last_screen_id].red2,
+  screens_color[last_screen_id].green2,
+  screens_color[last_screen_id].blue2,
+  screens_color[last_screen_id].red1,
+  screens_color[last_screen_id].green1,
+  screens_color[last_screen_id].blue1,
   5);
 }
 
@@ -129,7 +157,7 @@ void digitalClockDisplay(){
   printDigits(day(),2,'/');
   printDigits(month(),2,'/');
   printDigits(year(),4,0);
-  if(millis() - last_packet_recived > UPDATE_INTERVAL * 10) {
+  if(now() - last_packet_recived > 600) {
     gotoXY(4,1);
     LcdCharacter('~');
   }
@@ -160,7 +188,7 @@ bool handle_message() {
   else if (cmd==date) {
     date_cmd_t* dct = (date_cmd_t*)(data+1) ;
     setTime(dct->hour,dct->minute,dct->second,dct->day,dct->month,dct->year);
-    last_packet_recived = millis();
+    last_packet_recived = now();
   }
   else if (cmd==string) {
     uint8_t id = data[1];
@@ -173,6 +201,19 @@ bool handle_message() {
     screens_size[id-1] = data_len - 2;
     screens[id-1][data_len-2] = 0; //verify null termination
     memset(&screens_color[id-1], 0, sizeof(led_t)) ;
+  }
+  else if (cmd==sensor) {
+    uint8_t id = data[1];
+    if ((id>MAX_SENSORS)||data_len-2 != sizeof(sensor_data_t)) {
+      Serial.print("invalid sensor packet id:");
+	  Serial.print(id);
+	  Serial.print(" len:");
+	  Serial.print(data_len-2);
+	  Serial.print(" data size:");
+	  Serial.println(sizeof(sensor_data_t));
+      return false;
+    }
+    memcpy(&sensors[id], data+2, data_len-2);
   }
   else if (cmd==sound) {
     memcpy(sound_data, data+1, data_len-1);
@@ -204,13 +245,16 @@ bool handle_message() {
   return ret;
 }
 
-void send_init_packet() {
-  cmd_message_t message;
-  message.command = command_init;
-  message.dev_type = DEVICE_TYPE;
-  message.addr = config_settings.rx_addr;
+void send_sensor_data() {
   float humidity = dht.getHumidity();
   float temperature = dht.getTemperature();
+
+  Serial.print(dht.getStatusString());
+  Serial.print("\t");
+  Serial.print(humidity, 1);
+  Serial.print("\t\t");
+  Serial.println(temperature, 1);
+
   temp_rh_sensor_message_t sensor_message;
   sensor_message.command = sensor_data;
   sensor_message.sensor_type = SENSOR_RH_TEMP;
@@ -218,14 +262,25 @@ void send_init_packet() {
   sensor_message.rh = humidity;
   sensor_message.temp = temperature;
   radio.stopListening();
-  handle_write(&radio, (void *)&sensor_message, sizeof(sensor_message));
-  handle_write(&radio, (void *)&message, sizeof(message));
+  handle_write(&radio, (void *)&sensor_message, sizeof(sensor_message), 5);
+  radio.startListening();
+}
+
+void send_init_packet() {
+  cmd_message_t message;
+  message.command = command_init;
+  message.dev_type = DEVICE_TYPE;
+  message.addr = config_settings.rx_addr;
+  radio.stopListening();
+  handle_write(&radio, (void *)&message, sizeof(message), 5);
   radio.startListening();
 }
 
 void setup()
 {
-  //Serial.begin(9600);
+  Serial.begin(9600);
+  Serial.println("start setup");
+
   pinMode(A0, OUTPUT);
   pinMode(A1, OUTPUT);
   pinMode(A2, OUTPUT);
@@ -245,6 +300,7 @@ void setup()
     config_settings.tx_addr = 0xF0F0F0F0E1LL;//0xF0F0F00000LL | random(0xFFFFLL);
     config_settings.rx_addr = 0xF0F0000000LL | random(0xFFFFFFLL);
   }
+  Serial.println("start radio");
   radio.begin();
 
 
@@ -258,58 +314,58 @@ void setup()
   radio.openReadingPipe(1, config_settings.rx_addr);
 
   radio.startListening();
-  //radio.printDetails();
-  last_packet_recived = millis();
+  radio.printDetails();
+  last_packet_recived = now();
 }
 
 void next_screen()
 {
-  if (!is_timeouted(last_screen_time, SCREEN_TIME)) {
-    return;
-  }
-
-  last_screen_time = millis();
-  last_screen_id=(last_screen_id+1) % (MAX_SCREENS+1);
-  LcdClear();
-  while(last_screen_id && !screens_size[last_screen_id-1]) {
-    last_screen_id=(last_screen_id+1) % (MAX_SCREENS+1);
-  }
-  if(!last_screen_id){
+  Serial.println("time");
     LcdClear();
     digitalClockDisplay();
-    current_color = c_blue;
-    return;
-  }
-  LcdClear();
-  LcdString((char*)screens[last_screen_id-1]);
+	delay(SCREEN_TIME);
+	for(last_screen_id=0; last_screen_id< MAX_SCREENS;last_screen_id++) {
+		if(screens_size[last_screen_id]) {
+  Serial.println("screen");
+			color_out();
+			LcdClear();
+			LcdString((char*)screens[last_screen_id]);
+			delay(SCREEN_TIME);
+		}
+	}
 }
 
 void get_data_from_master()
 {
-  if(!is_timeouted(last_update_time, UPDATE_INTERVAL) || last_screen_id)
+  if(!is_timeouted(last_update_time, UPDATE_INTERVAL))
   {
     return;
   }
-  yellow(100);
-  send_init_packet();
-  unsigned long start_wait_time = millis();
-  bool timeout = false;
+  //yellow(100);
   bool end_transmission = false;
-  while(!timeout && !end_transmission) {
-    if ((millis() - start_wait_time > 1000)) {
-      red(1000);
-      timeout = true;
-    }
-    else if(radio.available()){
-      uint8_t payload_size = radio.getPayloadSize();
-      radio.read(radio_buf, payload_size);
-      if(handle_read(&radio, radio_buf,  payload_size, data, &data_len)){
-        end_transmission = handle_message();
-      }
-      start_wait_time = millis();
-    }
+  int i=0;
+  while (!end_transmission && i++<3){
+	  delay(100);
+	  send_init_packet();
+	  unsigned long start_wait_time = millis();
+	  bool timeout = false;
+	  while(!timeout && !end_transmission) {
+		if ((millis() - start_wait_time > 3000)) {
+		  red(10);
+		  timeout = true;
+		}
+		else if(radio.available()){
+		  uint8_t payload_size = radio.getPayloadSize();
+		  radio.read(radio_buf, payload_size);
+		  if(handle_read(&radio, radio_buf,  payload_size, data, &data_len)){
+			end_transmission = handle_message();
+		  }
+		  start_wait_time = millis();
+		}
+	  }
+	  last_update_time = millis();
   }
-  last_update_time = millis();
+  
   if(sound_len) {
     LcdClear();
     LcdString(("Playing..."));
@@ -321,8 +377,8 @@ void get_data_from_master()
 void loop()
 {
   // READ DATA
+  send_sensor_data();
   get_data_from_master();
-  color_out();
   next_screen();
 }
 

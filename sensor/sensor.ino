@@ -10,6 +10,8 @@
 #include "RF24.h"
 #include "DHT.h"
 #include "rf_io.h"
+#include <Adafruit_Sensor.h>
+#include <Adafruit_BMP085.h>
 
 /*********   PINS     *******
  *****   light sensor   *****
@@ -34,14 +36,15 @@
 #define MOISTURE_PIN A0
 #define DEVICE_TYPE 0x20
 #define MAX_STR_LEN (12*6)
-#define UPDATE_INTERVAL 5000
+#define UPDATE_INTERVAL 10000
 #define WD_TIMEOUT_INTERVAL (1 * 60 * 1000)
 const uint16_t MAGIC_CODE = 0xDE12;
 // Set up nRF24L01 radio on SPI bus plus pins 9 & 10
 int BH1750address = 0x23; //setting i2c address light sensor
 RF24 radio(9,10);
 DHT dht;
-BMP085 dps = BMP085();
+//BMP085 dps = BMP085();
+Adafruit_BMP085 bmp = Adafruit_BMP085(10085);
 
 
 // Radio pipe addresses for the 2 nodes to communicate.
@@ -89,8 +92,8 @@ typedef struct presure_sensor {
     uint8_t   command;
     uint8_t   sensor_type;
     uint64_t  addr;
-    long      temp;
-    long      presure;
+    float      temp;
+    float      presure;
 } presure_sensor_message_t;
 
 typedef struct moisture_sensor {
@@ -157,7 +160,7 @@ void send_init_packet() {
     message.addr = config_settings.rx_addr;
     radio.stopListening();
     Serial.println("sending init packet");
-    handle_write(&radio, (void *)&message, sizeof(message));
+    handle_write(&radio, (void *)&message, sizeof(message), 5);
     radio.startListening();
     unsigned long start_wait_time = millis();
     bool timeout = false;
@@ -198,7 +201,7 @@ void temp_rh_sensor()
     sensor_message.addr = config_settings.rx_addr;
     sensor_message.rh = humidity;
     sensor_message.temp = temperature;
-    handle_write(&radio, (void *)&sensor_message, sizeof(sensor_message));
+    handle_write(&radio, (void *)&sensor_message, sizeof(sensor_message), 5);
 }
 
 void light_sensor()
@@ -218,7 +221,7 @@ void light_sensor()
             sensor_message.sensor_type = SENSOR_LIGHT;
             sensor_message.addr = config_settings.rx_addr;
             sensor_message.lux = val;
-            handle_write(&radio, (void *)&sensor_message, sizeof(sensor_message));
+            handle_write(&radio, (void *)&sensor_message, sizeof(sensor_message), 5);
         }
 }
 
@@ -227,41 +230,59 @@ void soil_sensor()
     uint16_t reading = 0;
     reading=analogRead(MOISTURE_PIN);
     Serial.print("Soil Moisture:");
-    Serial.print(reading);
+    Serial.println(reading);
     moisture_sensor_message_t sensor_message;
     sensor_message.command = sensor_data;
     sensor_message.sensor_type = SENSOR_MOISTURE;
     sensor_message.addr = config_settings.rx_addr;
     sensor_message.moisture = reading;
-    handle_write(&radio, (void *)&sensor_message, sizeof(sensor_message));
+    handle_write(&radio, (void *)&sensor_message, sizeof(sensor_message), 5);
 }
 
 void presure_sensor()
 {
-    long Temperature = 0, Pressure = 0, Altitude = 0;
-    dps.getTemperature(&Temperature);
-    dps.getPressure(&Pressure);
-
-    Serial.print("Temp(C):");
-    Serial.print(Temperature);
-    Serial.print("  Pressure(Pa):");
-    Serial.println(Pressure);
-    presure_sensor_message_t sensor_message;
-    sensor_message.command = sensor_data;
-    sensor_message.sensor_type = SENSOR_PRESURE;
-    sensor_message.addr = config_settings.rx_addr;
-    sensor_message.temp = Temperature;
-    sensor_message.presure = Pressure;
-    handle_write(&radio, (void *)&sensor_message, sizeof(sensor_message));
+    //long Temperature = 0, Pressure = 0, Altitude = 0;
+    //dps.getTemperature(&Temperature);
+    //dps.getPressure(&Pressure);
+	sensors_event_t event;
+	bmp.getEvent(&event);
+	if (event.pressure)
+	{
+		/* Display atmospheric pressue in hPa */
+		Serial.print("Pressure:    ");
+		Serial.print(event.pressure);	
+		Serial.print(" hPa, ");
+		float temperature;
+		bmp.getTemperature(&temperature);
+		Serial.print("Temperature: ");
+		Serial.print(temperature);
+		Serial.println(" C");
+	
+//		Serial.print("Temp(C):");
+//		Serial.print(Temperature);
+//		Serial.print("  Pressure(Pa):");
+//		Serial.println(Pressure);
+		presure_sensor_message_t sensor_message;
+		sensor_message.command = sensor_data;
+		sensor_message.sensor_type = SENSOR_PRESURE;
+		sensor_message.addr = config_settings.rx_addr;
+		sensor_message.temp = temperature;
+		sensor_message.presure = event.pressure;
+		handle_write(&radio, (void *)&sensor_message, sizeof(sensor_message), 5);
+	}
 }
 
 void send_sensors_messages()
 {
     radio.stopListening();
     temp_rh_sensor();
+	//delay(300);
     light_sensor();
+	//delay(300);
     presure_sensor();
+	//delay(300);
     soil_sensor();
+	//delay(300);
     radio.startListening();
 }
 
@@ -271,8 +292,9 @@ void setup()
     Wire.begin();
     pinMode(MOISTURE_PIN, INPUT); //soil moisture analog pin
     dht.setup(DHT22_PIN); // data pin 2
-    dps.init();
-    dps.setMode(MODE_ULTRA_HIGHRES);
+    //dps.init();
+    //dps.setMode(MODE_ULTRA_HIGHRES);
+    bmp.begin();
     Serial.print("\n\rSensor begin ...\n\r");
     randomSeed(analogRead(0));
     eeprom_read_block((void*) &config_settings, (void*) 0, sizeof(config_settings));

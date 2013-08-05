@@ -46,7 +46,7 @@ bool handle_read(RF24 *radio, uint8_t* buf, unsigned int len, uint8_t* data, uns
     return false;
 }
 
-bool handle_write(RF24 *radio, void* buf, unsigned int len){
+bool handle_write(RF24 *radio, void* buf, unsigned int len, int repeat){
     uint8_t tx_buf[32];
     if(len<radio->getPayloadSize()) {
         tx_buf[0] = (stand_alone << 6) | (len+1);
@@ -57,14 +57,20 @@ bool handle_write(RF24 *radio, void* buf, unsigned int len){
         }
         //printf("\n");
         radio->stopListening();
-        int success = radio->write(tx_buf, len+1);
+		int i = 0;
+		bool success = false;
+		while(!success && (i++ < repeat)) {
+			success = radio->write(tx_buf, len+1);
+		}
         radio->startListening();
         if(success) {
+            Serial.println("send single packet succeded");
             return true;
-            // printf("send single packet succeded\n");
         }
+		Serial.println("send single packet failed");
         return false;
     }
+	Serial.println("packet too big");
     return false;
 }
 

@@ -30,11 +30,12 @@
 #define LCD_Y     48
 #define LCD_CMD   0
 
-void LcdCharacter(char character);
+void LcdCharacter(unsigned char character);
 void LcdClear(void);
 void LcdInitialise(void);
 void LcdString(char *characters);
 void LcdWrite(byte dc, byte data);
+void Lcdpixel(int x, int y);
 void gotoXY(int x, int y);
 void drawLine(void);
 void printDigits(unsigned long digits, int num_of_digits, char delimiter);
